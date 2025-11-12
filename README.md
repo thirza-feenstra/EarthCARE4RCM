@@ -7,7 +7,7 @@ Software to compare EarthCARE satellite observations of clouds, aerosols and rad
 - Plot functions to plot RACMO co-located output next to EarthCARE scene, for Level 1 ATLID backscatter and CPR reflectivity, Level 2a ice water content, snowfall rate and rainfall rate, and Level 2b cloud and precipitation target classification. Note that the calipso colormap that is used for ATLID Mie backscatter can be obtained from the ECtools code by Shannon Mason (https://bitbucket.org/smason/ectools/src/main/).
 - The grid setting of RACMO Greenland domain can be found under RACMO_grid, which is used to convert to the rotated pole grid.
 
-RACMO output from and for use of these tools can be found on Zenodo: 
+RACMO output from and for use of these tools can be found on Zenodo: Feenstra, T. (2025). Dataset for "Exploring new EarthCARE observations for evaluating Greenland clouds in RACMO2.4" [Data set]. Zenodo. https://doi.org/10.5281/zenodo.17590866
 
 **Authors:** Thirza Feenstra (t.n.feenstra@uu.nl), with contributions from Willem Jan van de Berg and Joppe Visch.
 
