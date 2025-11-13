@@ -905,8 +905,7 @@ def racmo_overview_plot(path_rac_3D, path_traj, path_siconca,
         rac2 = helpers.preprocess_racmo_traj(xr.open_dataset(path_traj[1]))
         racmo = xr.concat([rac1, rac2], dim='rlat')
     height = RCM2EC_functions.plev2gph(racmo3D.temp.values, racmo3D.hum.values, 
-                                       racmo3D.ps.values, dtop.Geopotential.values, 
-                                       racmo3D.afull.values, racmo3D.bfull.values)
+                                       racmo3D.ps.values, dtop.Geopotential.values)
     dh = height[:-1] - height[1:]
     cldt = racmo3D.cldi.values + racmo3D.cldw.values + racmo3D.clds.values + racmo3D.cldr.values
     cldt = helpers.kgkg_to_kgm3(cldt, racmo3D.temp.values, racmo3D.hum.values, 
