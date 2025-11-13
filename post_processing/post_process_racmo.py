@@ -1,9 +1,16 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Created on Thu Nov 21 09:33:32 2024
+Code to make files of RACMO coordinates on 
+EarthCARE trajectory and input for the 
+ATLID simulator.
+Works for one month at the time.
+Input:
+- domain: RACMO domain name
+- exp: RACMO experiment name (for location)
+- month: month to process (e.g. 202503 for March 2025)
 
-@author: Feens012
+@author: Thirza Feenstra
 """
 
 import numpy as np
@@ -30,6 +37,7 @@ plt.rcParams.update({'font.size': 12,
                      "hatch.color":'darkgrey', 
                     'mathtext.default': 'regular'})
 
+user = 'username'
 
 def make_clm_input(path_rcm_in, path_ec, path_out, path_aer, dtop, gridfile, domain='FGRN055'):
     racmo = xr.open_dataset(path_rcm_in, engine='netcdf4').squeeze()
@@ -303,17 +311,17 @@ def make_excel_file(excel_path, excel_in, date, data_path, domain, expname):
     return
 
 def post_process_ec(domain, expname, month):
-    savepath = f'/ec/res4/scratch/nld4845/experiment/{domain}/{expname}/CLM_in_{month}/'
-    savepath_grid = f'/ec/res4/scratch/nld4845/experiment/{domain}/{expname}/EC_grid_{month}/'
-    excel_path = '/ec/res4/scratch/nld4845/CLM/settings/'
-    dtop = xr.open_dataset(f'/perm/nld4845/masks_grids/{domain}_masks.nc', engine='netcdf4')
+    savepath = f'/ec/res4/scratch/{user}/experiment/{domain}/{expname}/CLM_in_{month}/'
+    savepath_grid = f'/ec/res4/scratch/{user}/experiment/{domain}/{expname}/EC_grid_{month}/'
+    excel_path = '/ec/res4/scratch/{user}/CLM/settings/'
+    dtop = xr.open_dataset(f'/perm/{user}/masks_grids/{domain}_masks.nc', engine='netcdf4')
     gridfile = RCMG.read_Setting_data(domain=domain,
-                                      path='/perm/nld4845/masks_grids/')
-    path_aer = '/perm/nld4845/RACMO24_data/ifsdata/aerosol_cams_3d_climatology_47r1.nc'
-    path_RCM = f'/ec/res4/scratch/nld4845/experiment/{domain}/{expname}/EC_TF_{month}/'
-    savepath_traj = f'/ec/res4/scratch/nld4845/experiment/{domain}/{expname}/EC_traj_{month}/'
+                                      path='/perm/{user}/masks_grids/')
+    path_aer = '/perm/{user}/RACMO24_data/ifsdata/aerosol_cams_3d_climatology_47r1.nc'
+    path_RCM = f'/ec/res4/scratch/{user}/experiment/{domain}/{expname}/EC_TF_{month}/'
+    savepath_traj = f'/ec/res4/scratch/{user}/experiment/{domain}/{expname}/EC_traj_{month}/'
     RCM_files = sorted((f for f in os.listdir(path_RCM) if not f.startswith(".") and month in f))
-    path_EC = f'/ec/res4/scratch/nld4845/{domain}-{expname}/EarthCARE_{month}/'
+    path_EC = f'/ec/res4/scratch/{user}/{domain}-{expname}/EarthCARE_{month}/'
     EC_files = sorted((f for f in os.listdir(path_EC) if not f.startswith(".") and month in f[:36]))
     RCM_dates = []
     EC_dates = []
