@@ -289,54 +289,6 @@ def plev2gph(t, h, ps, gs, return_half=False):
     else:
         return geof * invGrav
 
-def intp_NN(d_R, gpt, lat_EC, lon_EC, h_EC, varname, topo, date=None):
-    '''
-    input:
-        d_R: xr dataset containing at least RCM lat, lon and 3D data fields
-        gpt: geopotential height 3D field RCM
-        lat_EC, lon_EC: lat and lon of EarthCARE trajectory
-        h_EC: geopotential height EarthCARE trajectory
-        varname: variable name
-        topo: topographic heights (2D)
-        date: give date if one needs to be selected
-    returns:
-        profile of varname on EC trajectory, heights of EC trajectory within RCM domain
-    '''
-    h_EC_m = h_EC[(h_EC > np.min(gpt)) & (h_EC < np.max(gpt))]
-    prof = np.full((len(lat_EC),len(h_EC_m)), np.nan)
-    if date != None:
-        d_val = d_R.sel(time=date, method='nearest')[varname].values
-    else:
-        d_val = d_R[varname].values
-    try:
-        lat_R, lon_R = np.meshgrid(d_R.rlat.values, d_R.rlon.values)
-        lat_lon_flat = np.column_stack((lat_R.ravel(), lon_R.ravel()))
-        lat_lon_EC = np.column_stack((lat_EC, lon_EC))
-        tree = KDTree(lat_lon_flat)
-        nn_coords = lat_lon_flat[tree.query(lat_lon_EC)[1]]
-        lat_indices = {lat: np.where(d_R.rlat.values == lat)[0] for lat in np.unique(nn_coords[:, 0])}
-        lon_indices = {lon: np.where(d_R.rlon.values == lon)[0] for lon in np.unique(nn_coords[:, 1])}
-    except:
-        # the names for lat and lon are different in the L1 datasets
-        lat_R, lon_R = np.meshgrid(np.round(d_R.Latitude.values[:,0],2), np.round(d_R.Longitude.values[0],2))
-        lat_lon_flat = np.column_stack((lat_R.ravel(), lon_R.ravel()))
-        lat_lon_EC = np.column_stack((lat_EC, lon_EC))
-        tree = KDTree(lat_lon_flat)
-        nn_coords = np.round(lat_lon_flat[tree.query(lat_lon_EC)[1]],2)
-        lat_indices = {lat: np.where(np.round(d_R.Latitude.values[:,0],2) == lat)[0] for lat in np.unique(nn_coords[:, 0])}
-        lon_indices = {lon: np.where(np.round(d_R.Longitude.values[0],2) == lon)[0] for lon in np.unique(nn_coords[:, 1])}
-    for i, (lat, lon) in enumerate(nn_coords):
-        lat_idx = lat_indices[lat][0]
-        lon_idx = lon_indices[lon][0]
-        v = d_val[:, lat_idx, lon_idx]
-        g = gpt[:, lat_idx, lon_idx]
-        t = topo[lat_idx, lon_idx]
-        h_topo = h_EC_m[h_EC_m > t]
-        if h_topo.size > 0:
-            for j in range(len(h_topo)):
-                prof[i, j] = v[np.abs(g - h_topo[j]).argmin()]
-    return prof, h_EC_m
-
 def intp_NN_racmogrid(d_R, gpt, lat_EC, lon_EC, varname, gpt_half=None):
     '''
     input:
