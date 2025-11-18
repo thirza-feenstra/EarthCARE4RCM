@@ -65,7 +65,7 @@ def rain_fallspeed(rwc, rho):
             rwc_i = 0.5*rwc[i] + 0.5*rwc[i-1]
         lam = (1000*np.pi/6*0.22 * special.gamma(4)/(rho[i]*rwc_i))**(1/1.8)
         const = 386.8 * special.gamma(4.67) / special.gamma(4)
-        fall = (1/rho[i])**0.4 * const * lam**(-0.67)
+        fall[i] = (1/rho[i])**0.4 * const * lam**(-0.67)
     return fall
 
 def compute_composite(a_iwc, a_sig_iwc, a_re, a_sig_re, 
