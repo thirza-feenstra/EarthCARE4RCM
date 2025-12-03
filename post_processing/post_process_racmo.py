@@ -313,11 +313,11 @@ def make_excel_file(excel_path, excel_in, date, data_path, domain, expname):
 def post_process_ec(domain, expname, month):
     savepath = f'/ec/res4/scratch/{user}/experiment/{domain}/{expname}/CLM_in_{month}/'
     savepath_grid = f'/ec/res4/scratch/{user}/experiment/{domain}/{expname}/EC_grid_{month}/'
-    excel_path = '/ec/res4/scratch/{user}/CLM/settings/'
+    excel_path = f'/ec/res4/scratch/{user}/CLM/settings/'
     dtop = xr.open_dataset(f'/perm/{user}/masks_grids/{domain}_masks.nc', engine='netcdf4')
     gridfile = RCMG.read_Setting_data(domain=domain,
-                                      path='/perm/{user}/masks_grids/')
-    path_aer = '/perm/{user}/RACMO24_data/ifsdata/aerosol_cams_3d_climatology_47r1.nc'
+                                      path=f'/perm/{user}/masks_grids/')
+    path_aer = f'/perm/{user}/RACMO24_data/ifsdata/aerosol_cams_3d_climatology_47r1.nc'
     path_RCM = f'/ec/res4/scratch/{user}/experiment/{domain}/{expname}/EC_TF_{month}/'
     savepath_traj = f'/ec/res4/scratch/{user}/experiment/{domain}/{expname}/EC_traj_{month}/'
     RCM_files = sorted((f for f in os.listdir(path_RCM) if not f.startswith(".") and month in f))
