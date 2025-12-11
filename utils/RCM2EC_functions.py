@@ -381,16 +381,18 @@ def intp_NN_racmogrid_1D(d_R, lat_EC, lon_EC, varname, idx=None):
 
 
 def downsample(data, latitudes, longitudes, heights, target_latitudes, 
-               target_longitudes, target_heights, sample_type='mean'):
+               target_longitudes, target_heights, gridfile, sample_type='mean'):
+    " target lat lon in rotated domain "
     heights[~np.isfinite(heights)] = -100000
-    mask = (target_latitudes >= np.min(latitudes)) & (target_latitudes <= np.max(latitudes))
+    rlatitudes, rlongitudes = CFTR.RealWorld2RotatedGrid(latitudes, longitudes, gridfile)
+    mask = (target_latitudes >= np.min(rlatitudes)) & (target_latitudes <= np.max(rlatitudes))
     filtered_latitudes = target_latitudes[mask]
     filtered_longitudes = target_longitudes[mask]
     downsampled_data = np.zeros((len(target_heights), len(filtered_latitudes)))
     count = np.zeros_like(downsampled_data)
-    latitudes = latitudes[:len(data)]
-    longitudes = longitudes[:len(data)]
-    lat_lon_EC = np.column_stack((latitudes, longitudes))
+    rlatitudes = rlatitudes[:len(data)]
+    rlongitudes = rlongitudes[:len(data)]
+    lat_lon_EC = np.column_stack((rlatitudes, rlongitudes))
     lat_lon_flat = np.column_stack((filtered_latitudes, filtered_longitudes))
     tree = KDTree(lat_lon_flat)
     nn_indices = tree.query(lat_lon_EC)[1] 
@@ -426,7 +428,7 @@ def downsample(data, latitudes, longitudes, heights, target_latitudes,
             lon_mis.append(filtered_longitudes[i])
             mis_idx.append(i)
     lat_lon_mis = np.column_stack((lat_mis, lon_mis))
-    lat_lon_EC = np.column_stack((latitudes, longitudes))
+    lat_lon_EC = np.column_stack((rlatitudes, rlongitudes))
     tree = KDTree(lat_lon_EC)
     nn_indices = tree.query(lat_lon_mis)[1]
     for i, idx in enumerate(nn_indices):
@@ -452,12 +454,13 @@ def downsample(data, latitudes, longitudes, heights, target_latitudes,
                 col[j] = col[j + 1] 
             elif j > 0 and not np.isnan(col[j - 1]):  # Use value above if available
                 col[j] = col[j - 1]
-    return downsampled_data, (filtered_latitudes, filtered_longitudes)
+    return downsampled_data, CFTR.RotatedGrid2RealWorld(filtered_latitudes, filtered_longitudes, gridfile)
 
-def downsample_l2b_classification(clas, latitudes, longitudes, heights, 
-                                  target_latitudes, target_longitudes, 
-                                  target_heights):
-    mask = (target_latitudes >= np.min(latitudes)) & (target_latitudes <= np.max(latitudes))
+def downsample_l2b_classification(clas, latitudes, longitudes, heights, target_latitudes, 
+                                  target_longitudes, target_heights, gridfile):
+    " target lat lon in rotated domain "
+    rlatitudes, rlongitudes = CFTR.RealWorld2RotatedGrid(latitudes, longitudes, gridfile)
+    mask = (target_latitudes >= np.min(rlatitudes)) & (target_latitudes <= np.max(rlatitudes))
     filtered_latitudes = target_latitudes[mask]
     filtered_longitudes = target_longitudes[mask]
     downsampled_data = np.full((len(target_heights), len(filtered_latitudes)), np.nan)
@@ -468,18 +471,23 @@ def downsample_l2b_classification(clas, latitudes, longitudes, heights,
     count = np.zeros_like(downsampled_data)
     count_snow = np.zeros_like(downsampled_data)
     count_rain = np.zeros_like(downsampled_data)
-    latitudes = latitudes[:len(clas)]
-    longitudes = longitudes[:len(clas)]
-    lat_lon_EC = np.column_stack((latitudes, longitudes))
+    rlatitudes = rlatitudes[:len(clas)]
+    rlongitudes = rlongitudes[:len(clas)]
+    lat_lon_EC = np.column_stack((rlatitudes, rlongitudes))
     lat_lon_flat = np.column_stack((filtered_latitudes, filtered_longitudes))
     tree = KDTree(lat_lon_flat)
     nn_indices = tree.query(lat_lon_EC)[1] 
     for i, idx in enumerate(nn_indices):
         v = clas[i, :]
         h = heights[i, :]
-        mask_h = (h >= (target_heights[0][idx]-10)) & (h <= target_heights[0][idx])
-        v, h = v[mask_h], h[mask_h]
-        h_indices = np.abs(h[:, None] - target_heights[:,idx]).argmin(axis=1)
+        if len(np.shape(target_heights)) == 1:
+            mask_h = (h >= (np.nanmin(target_heights)-10)) & (h <= np.nanmax(target_heights))
+            v, h = v[mask_h], h[mask_h]
+            h_indices = np.abs(h[:, None] - target_heights).argmin(axis=1)
+        elif len(np.shape(target_heights)) == 2:
+            mask_h = (h >= (np.nanmin(target_heights[idx])-10)) & (h <= np.nanmax(target_heights[idx]))
+            v, h = v[mask_h], h[mask_h]
+            h_indices = np.abs(h[:, None] - target_heights[:,idx]).argmin(axis=1)
         if v.size > 0:
             c = np.full(len(v), np.nan)
             s = np.zeros(len(v))
@@ -510,6 +518,7 @@ def downsample_l2b_classification(clas, latitudes, longitudes, heights,
     downsampled_data = downsampled_data / count
     downsampled_snow[(snow >= 0.5*count_snow) & (count_snow > 0)] = 1
     downsampled_rain[(rain >= 0.5*count_rain) & (count_rain > 0)] = 1
+    # downsampled_data[(snow >= 0.5*count_snow) & (count_snow > 0)] = np.nan
     nan_mask = np.isnan(downsampled_data)
     lat_mis = []
     lon_mis = []
@@ -520,13 +529,17 @@ def downsample_l2b_classification(clas, latitudes, longitudes, heights,
             lon_mis.append(filtered_longitudes[i])
             mis_idx.append(i)
     lat_lon_mis = np.column_stack((lat_mis, lon_mis))
-    lat_lon_EC = np.column_stack((latitudes, longitudes))
+    lat_lon_EC = np.column_stack((rlatitudes, rlongitudes))
     tree = KDTree(lat_lon_EC)
     nn_indices = tree.query(lat_lon_mis)[1]
     for i, idx in enumerate(nn_indices):
         v = clas[idx,:]
-        h = target_heights[:,mis_idx[i]]
-        h_indices = np.abs(heights[idx,:] - h[:, None]).argmin(axis=1)
+        if len(np.shape(target_heights)) == 1:
+            h = target_heights[:]
+            h_indices = np.abs(heights[idx,:] - h[:, None]).argmin(axis=1)
+        elif len(np.shape(target_heights)) == 2:
+            h = target_heights[:,mis_idx[i]]
+            h_indices = np.abs(heights[idx,:] - h[:, None]).argmin(axis=1)
         if v.size > 0:
             c = np.full(len(v), np.nan)
             c[np.isin(v, np.array([3,13,14,15,19,21]))] = 0                       
@@ -543,12 +556,15 @@ def downsample_l2b_classification(clas, latitudes, longitudes, heights,
             lon_mis.append(filtered_longitudes[i])
             mis_idx.append(i)
     lat_lon_mis = np.column_stack((lat_mis, lon_mis))
-    lat_lon_EC = np.column_stack((latitudes, longitudes))
+    lat_lon_EC = np.column_stack((rlatitudes, rlongitudes))
     tree = KDTree(lat_lon_EC)
     nn_indices = tree.query(lat_lon_mis)[1]
     for i, idx in enumerate(nn_indices):
         v = clas[idx,:]
-        h = target_heights[:,mis_idx[i]]
+        if len(np.shape(target_heights)) == 1:
+            h = target_heights[:]
+        elif len(np.shape(target_heights)) == 2:
+            h = target_heights[:,mis_idx[i]]
         h_indices = np.abs(heights[idx,:] - h[:, None]).argmin(axis=1)
         if v.size > 0:
             s = np.full(len(v), np.nan)
@@ -557,18 +573,19 @@ def downsample_l2b_classification(clas, latitudes, longitudes, heights,
             r[np.isin(v, np.array([2,5,6,9,10,11,12]))] = 1 
         downsampled_snow[:,mis_idx[i]] = s[h_indices]
         downsampled_rain[:,mis_idx[i]] = r[h_indices]
-    return downsampled_data, downsampled_snow, downsampled_rain, (filtered_latitudes, filtered_longitudes)
+    return downsampled_data, downsampled_snow, downsampled_rain, CFTR.RotatedGrid2RealWorld(filtered_latitudes, filtered_longitudes, gridfile)
 
-def downsample_1D(data, latitudes, longitudes, target_latitudes, target_longitudes):
-    mask = (target_latitudes >= np.min(latitudes)) & (target_latitudes <= np.max(latitudes))
-    filtered_latitudes = target_latitudes[mask]
-    filtered_longitudes = target_longitudes[mask]
-    downsampled_data = np.zeros(len(filtered_latitudes))
+def downsample_1D(data, latitudes, longitudes, target_rlatitudes, target_rlongitudes, gridfile):
+    rlatitudes, rlongitudes = CFTR.RealWorld2RotatedGrid(latitudes, longitudes, gridfile)
+    mask = (target_rlatitudes >= np.min(rlatitudes)) & (target_rlatitudes <= np.max(rlatitudes))
+    filtered_rlatitudes = target_rlatitudes[mask]
+    filtered_rlongitudes = target_rlongitudes[mask]
+    downsampled_data = np.zeros(len(filtered_rlatitudes))
     count = np.zeros_like(downsampled_data)
-    latitudes = latitudes[:len(data)]
-    longitudes = longitudes[:len(data)]
-    lat_lon_EC = np.column_stack((latitudes, longitudes))
-    lat_lon_flat = np.column_stack((filtered_latitudes, filtered_longitudes))
+    rlatitudes = rlatitudes[:len(data)]
+    rlongitudes = rlongitudes[:len(data)]
+    lat_lon_EC = np.column_stack((rlatitudes, rlongitudes))
+    lat_lon_flat = np.column_stack((filtered_rlatitudes, filtered_rlongitudes))
     tree = KDTree(lat_lon_flat)
     nn_indices = tree.query(lat_lon_EC)[1] 
     for i, idx in enumerate(nn_indices):
@@ -577,21 +594,25 @@ def downsample_1D(data, latitudes, longitudes, target_latitudes, target_longitud
             downsampled_data[idx] += v
             count[idx] += 1
     downsampled_data = downsampled_data / count
-    nan_mask = np.isnan(downsampled_data)
     lat_mis = []
     lon_mis = []
     mis_idx = []
     for i in range(len(downsampled_data)):
-        if np.isnan(nan_mask[i]):  
-            lat_mis.append(filtered_latitudes[i])
-            lon_mis.append(filtered_longitudes[i])
+        if np.isnan(downsampled_data[i]):  
+            lat_mis.append(filtered_rlatitudes[i])
+            lon_mis.append(filtered_rlongitudes[i])
             mis_idx.append(i)
     if len(mis_idx) > 0:
         lat_lon_mis = np.column_stack((lat_mis, lon_mis))
-        lat_lon_EC = np.column_stack((latitudes, longitudes))
+        lat_lon_EC = np.column_stack((rlatitudes, rlongitudes))
         tree = KDTree(lat_lon_EC)
         nn_indices = tree.query(lat_lon_mis)[1]
-        for j, idx in enumerate(nn_indices):
-            v = data[(idx-1):(idx+2)]
-        downsampled_data[mis_idx[i]] = np.nanmean(v)
-    return downsampled_data, (filtered_latitudes, filtered_longitudes)
+        for j, (n, idx) in enumerate(zip(mis_idx, nn_indices)):
+            if np.isfinite(np.nanmean(data[(idx-1):(idx+2)])):
+                v = data[(idx-1):(idx+2)]
+            elif np.isfinite(np.nanmean(data[(idx-2):(idx+3)])):
+                v = data[(idx-2):(idx+3)]
+            elif np.isfinite(np.nanmean(data[(idx-3):(idx+4)])):
+                v = data[(idx-3):(idx+4)]
+            downsampled_data[n] = np.nanmean(v)
+    return downsampled_data, CFTR.RotatedGrid2RealWorld(filtered_rlatitudes, filtered_rlongitudes, gridfile)

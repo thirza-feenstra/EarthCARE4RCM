@@ -248,28 +248,109 @@ def plot_l1_comparison(pathclm, pathtraj, pathatl, pathcpr, gridfile, savedir=No
     Returns:
     None
     """
-    clmfile = xr.open_dataset(pathclm)
-    atl = xr.open_dataset(pathatl, engine='h5netcdf')
-    cpr = xr.open_dataset(pathcpr, engine='h5netcdf')
-    racfile = xr.open_dataset(pathtraj).squeeze()
-    h_clm = clmfile.altitude_mid.values
+    if len(pathclm) != 2:
+        clmfile = xr.open_dataset(pathclm)
+        try:
+            atl = xr.open_dataset(pathatl, group='ScienceData', engine='h5netcdf')
+            cprsd = xr.open_dataset(pathcpr, group='ScienceData/Data', phony_dims='sort', engine='h5netcdf',
+                                drop_variables=['binStatusFlag', 'covarianceCoeff', 'dopplerStatusFlag',
+                                                'dopplerVelocity', 'dopplerVelocityAtSurfaceBin', 
+                                                'integrationNumberDoppler', 'integrationNumberEcho', 
+                                                'noiseFloorPower', 'operationalMode', 'pulseShapeWarnFlag',
+                                                'pulseWidth', 'radarCoefficient', 'rangeBinValidNumber',
+                                                'rayHeaderCalVers', 'rayHeaderLambda', 'rayQualityFlag',
+                                                'rayStatusFlag', 'rayStatusPrf', 'receivedEchoPower',
+                                                'satelliteVelocityContaminationInLOS', 'sigmaZero',
+                                                'spectrumWidth', 'subOperationalMode', 'surfaceBinFraction',
+                                                'surfaceBinNumber', 'surfaceEstimationFlag', 'transmitPower',
+                                                'transmitPowerAvg', 'txRxStatusFlag'])
+            cprgeo = xr.open_dataset(pathcpr, group='ScienceData/Geo', phony_dims='sort', engine='h5netcdf',
+                                    drop_variables=['navigationLandWaterFlg', 'pitchAngle', 'processingFrameNo',
+                                                    'profileTime', 'rangeBinMaxNumber', 'rangeToFirstBin',
+                                                    'rangeToIntercept', 'rayHeaderRangeBinSize', 'rayHeaderSpatAvg',
+                                                    'rayNumber', 'rollAngle', 'satelliteVelocityX', 
+                                                    'satelliteVelocityY', 'satelliteVelocityZ', 'solarAzimuthAngle',
+                                                    'solarElevationAngle', 'surfaceElevation', 'timeFlag', 
+                                                    'xPosition', 'yPosition', 'yawAngle', 'zPosition'])
+            cprgeo.rename_dims({'phony_dim_14': 'phony_dim_10'})
+            cpr = xr.merge([cprsd, cprgeo])
+        except:
+            atl = xr.open_dataset(pathatl, engine='h5netcdf')
+            cpr = xr.open_dataset(pathcpr, engine='h5netcdf')
+        racfile = xr.open_dataset(pathtraj).squeeze()
+        h_clm = clmfile.altitude_mid.values
+    else:
+        clmfile = xr.open_mfdataset(pathclm, concat_dim='x', combine='nested')
+        atl = xr.open_mfdataset(pathatl, group='ScienceData', engine='h5netcdf',concat_dim='along_track', combine='nested', 
+                                drop_variables=['background_correction_factor_error_crosspolar', 
+                                                'background_correction_factor_error_mie',
+                                                'background_correction_factor_error_rayleigh',
+                                                'background_correction_factor_crosspolar',
+                                                'background_correction_factor_mie',
+                                                'background_correction_factor_rayleigh',
+                                                'mie_20km_spike_factor',
+                                                'ray_20km_spike_factor',
+                                                'copolar_polarsation_crosstalk_segment_error',
+                                                'copolar_polarsation_crosstalk_segment',
+                                                'crosspolar_polarsation_crosstalk_segment_error',
+                                                'crosspolar_polarsation_crosstalk_segment',
+                                                'rayleigh_spectral_crosstalk_STRAP_evaluations_error',
+                                                'rayleigh_spectral_crosstalk_STRAP_evaluations',
+                                                'valid_STRAP_rayleigh_spectral_crosstalk_segment_flag',
+                                                'rayleigh_spectral_crosstalk_surface_evaluations_error',
+                                                'rayleigh_spectral_crosstalk_surface_evaluations',
+                                                'valid_surface_rayleigh_spectral_crosstalk_segment_flag',
+                                                'segments_first_index',
+                                                'mie_spectral_crosstalk_segment_error',
+                                                'mie_spectral_crosstalk_segment'])
+        cprsd = xr.open_mfdataset(pathcpr, group='ScienceData/Data', phony_dims='sort', engine='h5netcdf',
+                                  concat_dim='phony_dim_10', combine='nested',
+                            drop_variables=['binStatusFlag', 'covarianceCoeff', 'dopplerStatusFlag',
+                                            'dopplerVelocity', 'dopplerVelocityAtSurfaceBin', 
+                                            'integrationNumberDoppler', 'integrationNumberEcho', 
+                                            'noiseFloorPower', 'operationalMode', 'pulseShapeWarnFlag',
+                                            'pulseWidth', 'radarCoefficient', 'rangeBinValidNumber',
+                                            'rayHeaderCalVers', 'rayHeaderLambda', 'rayQualityFlag',
+                                            'rayStatusFlag', 'rayStatusPrf', 'receivedEchoPower',
+                                            'satelliteVelocityContaminationInLOS', 'sigmaZero',
+                                            'spectrumWidth', 'subOperationalMode', 'surfaceBinFraction',
+                                            'surfaceBinNumber', 'surfaceEstimationFlag', 'transmitPower',
+                                            'transmitPowerAvg', 'txRxStatusFlag'])
+        cprgeo = xr.open_mfdataset(pathcpr, group='ScienceData/Geo', phony_dims='sort', engine='h5netcdf',
+                                   concat_dim='phony_dim_14', combine='nested',
+                                drop_variables=['navigationLandWaterFlg', 'pitchAngle', 'processingFrameNo',
+                                                'profileTime', 'rangeBinMaxNumber', 'rangeToFirstBin',
+                                                'rangeToIntercept', 'rayHeaderRangeBinSize', 'rayHeaderSpatAvg',
+                                                'rayNumber', 'rollAngle', 'satelliteVelocityX', 
+                                                'satelliteVelocityY', 'satelliteVelocityZ', 'solarAzimuthAngle',
+                                                'solarElevationAngle', 'surfaceElevation', 'timeFlag', 
+                                                'xPosition', 'yPosition', 'yawAngle', 'zPosition'])
+        cprgeo.rename_dims({'phony_dim_14': 'phony_dim_10'})
+        cpr = xr.merge([cprsd, cprgeo])
+        rac1 = helpers.preprocess_racmo_traj(xr.open_dataset(pathtraj[0]))
+        rac2 = helpers.preprocess_racmo_traj(xr.open_dataset(pathtraj[1]))
+        racfile = xr.concat([rac1, rac2], dim='rlat')
+        h_clm = clmfile.altitude_mid.values[0]
     clm_mie = clmfile.ATB_Mie_co.values
     clm_ray = clmfile.ATB_Ray.values
     h_traj = racfile.height.values
+    rlat, rlon = CFTR.RealWorld2RotatedGrid(clmfile.Latitude.values, clmfile.Longitude.values, gridfile)
     (lat_EC_r, lon_EC_r), h_EC_r, lat_EC, lon_EC = RCM2EC_functions.get_EC_traj(atl, [55, 90, -105, 35], gridfile)
     ec_mie, h_atl = RCM2EC_functions.get_EC_r(atl, 'mie_attenuated_backscatter', [55, 90, -105, 35], 
                                             h_clm[h_clm > 0], return_H=True)
     ec_mie, (lat_new, lon_new) = RCM2EC_functions.downsample(ec_mie, lat_EC, lon_EC, h_atl,
-                                            clmfile.Latitude.values, clmfile.Longitude.values, h_clm)
+                                            rlat, rlon, h_clm,
+                                            gridfile)
     ec_ray, h_atl = RCM2EC_functions.get_EC_r(atl, 'rayleigh_attenuated_backscatter', [55, 90, -105, 35], 
                                             h_clm[h_clm > 0], return_H=True)
     ec_ray, (lat_new, lon_new) = RCM2EC_functions.downsample(ec_ray, lat_EC, lon_EC, h_atl,
-                                            clmfile.Latitude.values, clmfile.Longitude.values, h_clm)    
+                                            rlat, rlon, h_clm,
+                                            gridfile)    
 
     ec_mie[np.abs(ec_mie) > 1e20] = np.nan
     ec_ray[np.abs(ec_ray) > 1e20] = np.nan
     (lat_EC_r, lon_EC_r), h_EC_r, lat_EC, lon_EC = RCM2EC_functions.get_EC_traj(cpr, [55, 90, -105, 35], gridfile)
-    rac_refl = radar_sim.radar_sim(racfile.cldi.values, racfile.cldw.values, racfile.clds.values, 
+    rac_refl = helpers.radar_sim(racfile.cldi.values, racfile.cldw.values, racfile.clds.values, 
                                  racfile.cldr.values, racfile.temp.values, racfile.hum.values, 
                                  racfile.p.values, racfile.height.values)
     
@@ -278,7 +359,8 @@ def plot_l1_comparison(pathclm, pathtraj, pathatl, pathcpr, gridfile, savedir=No
     ecval = 10*np.log10(ecval)
     ecval[~np.isfinite(ecval)] = -100
     ecval, (lat_new2, lon_new2) = RCM2EC_functions.downsample(ecval, lat_EC, lon_EC, hec,
-                                            racfile.lat.values, racfile.lon.values, h_traj)
+                                            racfile.rlat.values, racfile.rlon.values, h_traj,
+                                            gridfile)
     ecval[(ecval > -0.01) & (ecval < 0.01)] = np.nan
     ecval[(ecval < -35)] = np.nan
     ecval[:10] = np.nan
@@ -294,6 +376,7 @@ def plot_l1_comparison(pathclm, pathtraj, pathatl, pathcpr, gridfile, savedir=No
         valid_lat = np.isin(lat_new2, lat_new) & np.isin(lon_new2, lon_new)
         ecval = ecval[:, valid_lat]
         lat_new, lon_new = lat_new[valid_lat2], lon_new[valid_lat2]
+    # lat_new2, lon_new2 = lat_new2[valid_lat], lon_new2[valid_lat]
     valid_indices = np.isin(clmfile.Latitude.values, lat_new) & np.isin(clmfile.Longitude.values, lon_new)
     valid_indices2 = np.isin(racfile.lat.values, lat_new) & np.isin(racfile.lon.values, lon_new)
     rac_refl = rac_refl[:, valid_indices2]
@@ -467,11 +550,11 @@ def plot_l2a_IWC_precip(pathtraj, pathice, pathcld, pathtc, gridfile, savedir=No
     aice[~np.isfinite(aice)] = 0
     
     if lat_lon is None:
-        lat_in, lon_in = racmo.lat.values, racmo.lon.values
+        lat_in, lon_in = racmo.rlat.values, racmo.rlon.values
     else:
         lat_in, lon_in = lat_lon
     aice, (lat_new, lon_new) = RCM2EC_functions.downsample(aice, lat_EC, lon_EC, hec,
-                                                            lat_in, lon_in, h_traj)
+                                                            lat_in, lon_in, h_traj, gridfile)
     aice[np.abs(aice) > 1e20] = np.nan
     aice = aice/1e6
     aice[~np.isfinite(aice)] = 0
@@ -480,11 +563,11 @@ def plot_l2a_IWC_precip(pathtraj, pathice, pathcld, pathtc, gridfile, savedir=No
     cice, hec = RCM2EC_functions.get_EC_r(eccld, 'water_content', [55, 90, -105, 35], h_traj[h_traj > 0], return_H=True)
     cice[~np.isfinite(cice)] = 0
     cice, (lat_new2, lon_new2) = RCM2EC_functions.downsample(cice, lat_EC, lon_EC, hec,
-                                            lat_in, lon_in, h_traj)
+                                            lat_in, lon_in, h_traj, gridfile)
     cwat = RCM2EC_functions.get_EC_r(eccld, 'liquid_water_content', [55, 90, -105, 35], h_traj[h_traj > 0])
     cwat[~np.isfinite(cwat)] = 0
     cwat, (lat_new2, lon_new2) = RCM2EC_functions.downsample(cwat, lat_EC, lon_EC, hec,
-                                            lat_in, lon_in, h_traj)
+                                            lat_in, lon_in, h_traj, gridfile)
     cwat[~np.isfinite(cwat)] = 0
     cice -= cwat
     cice[cice <= 1e-7] = np.nan
@@ -493,7 +576,7 @@ def plot_l2a_IWC_precip(pathtraj, pathice, pathcld, pathtc, gridfile, savedir=No
     cprec_flx, hec = RCM2EC_functions.get_EC_r(eccld, 'mass_flux', [55, 90, -105, 35], h_traj[h_traj > 0], return_H=True)
     cprec_flx[~np.isfinite(cprec_flx)] = 0
     cprec_flx, (lat_new2, lon_new2) = RCM2EC_functions.downsample(cprec_flx, lat_EC, lon_EC, hec,
-                                                                lat_in, lon_in, h_traj)
+                                                                lat_in, lon_in, h_traj, gridfile)
     racmo_snow_flx = racmo_snow * 2 # to go to the flux, based on fall speed of 2 m/s
     racmo_snow_flx[racmo_snow_flx <= 1e-7] = np.nan
     rho = helpers.density(temp, hum, pres)
@@ -501,7 +584,7 @@ def plot_l2a_IWC_precip(pathtraj, pathice, pathcld, pathtc, gridfile, savedir=No
     racmo_rain_flx[racmo_rain_flx <= 1e-7] = np.nan
     cvel = RCM2EC_functions.get_EC_r(eccld, 'sedimentation_velocity', [55, 90, -105, 35], h_traj[h_traj > 0])
     cvel, (lat_new2, lon_new2) = RCM2EC_functions.downsample(cvel, lat_EC, lon_EC, hec,
-                                            lat_in, lon_in, h_traj)
+                                            lat_in, lon_in, h_traj, gridfile)
 
     racmo_snow[racmo_snow <= 1e-7] = np.nan
     racmo_rain[racmo_rain <= 1e-7] = np.nan
@@ -509,7 +592,7 @@ def plot_l2a_IWC_precip(pathtraj, pathice, pathcld, pathtc, gridfile, savedir=No
     tc, hectc = RCM2EC_functions.get_EC_r(ectc, 'synergetic_target_classification', [55, 90, -105, 35], 
                                         h_traj[h_traj >= 0], return_H=True)
     tc, ec_snow, ec_rain, (lat_new, lon_new) = RCM2EC_functions.downsample_l2b_classification(tc, lat_EC, lon_EC, hectc,
-                                                                lat_in, lon_in, h_traj)
+                                                                lat_in, lon_in, h_traj, gridfile)
     cprec_flx[cprec_flx <= 1e-7] = np.nan
     ec_rain[~np.isfinite(ec_rain)] = 0
     snow_mask = np.ones(np.shape(ec_rain))
@@ -553,32 +636,32 @@ def plot_l2a_IWC_precip(pathtraj, pathice, pathcld, pathtc, gridfile, savedir=No
                                               h_traj[h_traj > 0], return_H=True)
     aice_sig = aice_sig / 1e6
     aice_sig = RCM2EC_functions.downsample(aice_sig, lat_EC, lon_EC, hec,
-                                        lat_in, lon_in, h_traj, sample_type='error')[0]
+                                        lat_in, lon_in, h_traj, gridfile, sample_type='error')[0]
     if lat_lon is None:
         aice_sig = aice_sig[:, valid_lat2]
     a_re, hec = RCM2EC_functions.get_EC_r(ecice, 'ice_effective_radius', [55, 90, -105, 35], 
                                           h_traj[h_traj > 0], return_H=True)
     a_re[~np.isfinite(a_re)] = 0
     a_re = RCM2EC_functions.downsample(a_re, lat_EC, lon_EC, hec,
-                                        lat_in, lon_in, h_traj)[0]
+                                        lat_in, lon_in, h_traj, gridfile)[0]
     if lat_lon is None:
         a_re = a_re[:, valid_lat2]
     a_re_sig, hec = RCM2EC_functions.get_EC_r(ecice, 'ice_effective_radius_error', [55, 90, -105, 35], 
                                               h_traj[h_traj > 0], return_H=True)
     a_re_sig = RCM2EC_functions.downsample(a_re_sig, lat_EC, lon_EC, hec,
-                                        lat_in, lon_in, h_traj, sample_type='error')[0]
+                                        lat_in, lon_in, h_traj, gridfile, sample_type='error')[0]
     if lat_lon is None:
         a_re_sig = a_re_sig[:, valid_lat2]
     cice_sig, hec = RCM2EC_functions.get_EC_r(eccld, 'water_content_log_error', [55, 90, -105, 35], 
                                               h_traj[h_traj > 0], return_H=True)
     cice_sig = RCM2EC_functions.downsample(cice_sig, lat_EC, lon_EC, hec,
-                                        lat_in, lon_in, h_traj, sample_type='error')[0]
+                                        lat_in, lon_in, h_traj, gridfile, sample_type='error')[0]
     if lat_lon is None:
         cice_sig = cice_sig[:, valid_lat]
     c_re_sig, hec = RCM2EC_functions.get_EC_r(eccld, 'characteristic_diameter_log_error', [55, 90, -105, 35], 
                                               h_traj[h_traj > 0], return_H=True)
     c_re_sig = RCM2EC_functions.downsample(c_re_sig, lat_EC, lon_EC, hec,
-                                        lat_in, lon_in, h_traj, sample_type='error')[0]
+                                        lat_in, lon_in, h_traj, gridfile, sample_type='error')[0]
     if lat_lon is None:
         c_re_sig = c_re_sig[:, valid_lat]
     comp = helpers.compute_composite(aice, aice_sig, a_re, a_re_sig, 
@@ -855,11 +938,11 @@ def plot_TC2b_comparison(pathtraj, pathtc, gridfile, savedir=None, date=None,
     tc, hec = RCM2EC_functions.get_EC_r(ectc, 'synergetic_target_classification', [55, 90, -105, 35], 
                                         h_traj[h_traj >= 0], return_H=True)
     if lat_lon is None:
-        lat_in, lon_in = racmo.lat.values, racmo.lon.values
+        lat_in, lon_in = racmo.rlat.values, racmo.rlon.values
     else:
         lat_in, lon_in = lat_lon
     tc, ec_snow, ec_rain, (lat_new, lon_new) = RCM2EC_functions.downsample_l2b_classification(tc, lat_EC, lon_EC, hec,
-                                                                lat_in, lon_in, h_traj)
+                                                                lat_in, lon_in, h_traj, gridfile)
     tc[tc > 1] = np.nan
     valid_indices = np.isin(racmo.lat.values, lat_new) & np.isin(racmo.lon.values, lon_new)
     racmo_tc = racmo_tc[:, valid_indices]
