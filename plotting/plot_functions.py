@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 import matplotlib as mpl
 import matplotlib.patches as patches
 import matplotlib.gridspec as gridspec
-from matplotlib.ticker import MaxNLocator
+from matplotlib.ticker import MaxNLocator, FixedLocator
 from cmcrameri import cm as ccm
 import matplotlib.colors as mcolors
 import cartopy.crs as crs
@@ -21,7 +21,7 @@ from datetime import datetime
 sys.path.append('../utils/')
 import RCM2EC_functions 
 import helpers
-import radar_sim
+import Convert_From_To_RacmoGrid as CFTR
 
 def format_lat_lon_height(ax1, ax2, lat, lon, height=None, x1label=True, 
                           x2label=True, ylabel=True, grid='below'):
@@ -72,7 +72,7 @@ def plot_topo(ax, x, heights_srf, heights):
 
 def RACMOvsEC_panel_plot(racmo_data, ec_data, height, lat, lon, cmap_name, 
                          norm, cbar_label, savedir=None, varname=None, date=None, 
-                         order='horizontal', grid='below'):
+                         order='horizontal', grid='below', clutter=None):
     """
     Plots a comparison between RACMO and EarthCARE data for one timestep.
     Input:
@@ -88,6 +88,7 @@ def RACMOvsEC_panel_plot(racmo_data, ec_data, height, lat, lon, cmap_name,
     - date: necessary for name of saved plot (if savedir != None)
     - order: horizontal or vertical
     - grid: below or above (for gridlines)
+    - clutter: mask to mask out the clutter
     """
     if order=='horizontal':
         fig, axes = plt.subplots(1, 2, figsize=(13,5), sharex=True)
@@ -106,6 +107,9 @@ def RACMOvsEC_panel_plot(racmo_data, ec_data, height, lat, lon, cmap_name,
         discrete_cmap = mcolors.ListedColormap(colors)
         ec_data, snow_ec, rain_ec = ec_data
         racmo_data, snow_rac, rain_rac = racmo_data
+        if not isinstance(clutter, type(None)):
+            ax1.pcolormesh(x, height, clutter, shading='auto', 
+                            cmap='Greys', vmin=0, vmax=2)
         plot = ax1.pcolormesh(x, height, ec_data, shading='auto', 
                             cmap=discrete_cmap, vmin=0, vmax=1.41)
         plot = ax3.pcolormesh(x, height, racmo_data, shading='auto', 
@@ -137,6 +141,9 @@ def RACMOvsEC_panel_plot(racmo_data, ec_data, height, lat, lon, cmap_name,
                             facecolor='white', edgecolor='black', hatch='///', clip_on=False)
             cbar_ax.add_patch(hatch_rect)
     else:
+        if not isinstance(clutter, type(None)):
+            ax1.pcolormesh(x, height, clutter, shading='auto', 
+                            cmap='Greys', vmin=0, vmax=2)
         plot = ax1.pcolormesh(x, height, ec_data, shading='auto', 
                             cmap=cmap_name, norm=norm)
         plot = ax3.pcolormesh(x, height, racmo_data, shading='auto', 
@@ -248,100 +255,22 @@ def plot_l1_comparison(pathclm, pathtraj, pathatl, pathcpr, gridfile, savedir=No
     Returns:
     None
     """
-    if len(pathclm) != 2:
-        clmfile = xr.open_dataset(pathclm)
-        try:
-            atl = xr.open_dataset(pathatl, group='ScienceData', engine='h5netcdf')
-            cprsd = xr.open_dataset(pathcpr, group='ScienceData/Data', phony_dims='sort', engine='h5netcdf',
-                                drop_variables=['binStatusFlag', 'covarianceCoeff', 'dopplerStatusFlag',
-                                                'dopplerVelocity', 'dopplerVelocityAtSurfaceBin', 
-                                                'integrationNumberDoppler', 'integrationNumberEcho', 
-                                                'noiseFloorPower', 'operationalMode', 'pulseShapeWarnFlag',
-                                                'pulseWidth', 'radarCoefficient', 'rangeBinValidNumber',
-                                                'rayHeaderCalVers', 'rayHeaderLambda', 'rayQualityFlag',
-                                                'rayStatusFlag', 'rayStatusPrf', 'receivedEchoPower',
-                                                'satelliteVelocityContaminationInLOS', 'sigmaZero',
-                                                'spectrumWidth', 'subOperationalMode', 'surfaceBinFraction',
-                                                'surfaceBinNumber', 'surfaceEstimationFlag', 'transmitPower',
-                                                'transmitPowerAvg', 'txRxStatusFlag'])
-            cprgeo = xr.open_dataset(pathcpr, group='ScienceData/Geo', phony_dims='sort', engine='h5netcdf',
-                                    drop_variables=['navigationLandWaterFlg', 'pitchAngle', 'processingFrameNo',
-                                                    'profileTime', 'rangeBinMaxNumber', 'rangeToFirstBin',
-                                                    'rangeToIntercept', 'rayHeaderRangeBinSize', 'rayHeaderSpatAvg',
-                                                    'rayNumber', 'rollAngle', 'satelliteVelocityX', 
-                                                    'satelliteVelocityY', 'satelliteVelocityZ', 'solarAzimuthAngle',
-                                                    'solarElevationAngle', 'surfaceElevation', 'timeFlag', 
-                                                    'xPosition', 'yPosition', 'yawAngle', 'zPosition'])
-            cprgeo.rename_dims({'phony_dim_14': 'phony_dim_10'})
-            cpr = xr.merge([cprsd, cprgeo])
-        except:
-            atl = xr.open_dataset(pathatl, engine='h5netcdf')
-            cpr = xr.open_dataset(pathcpr, engine='h5netcdf')
-        racfile = xr.open_dataset(pathtraj).squeeze()
-        h_clm = clmfile.altitude_mid.values
-    else:
-        clmfile = xr.open_mfdataset(pathclm, concat_dim='x', combine='nested')
-        atl = xr.open_mfdataset(pathatl, group='ScienceData', engine='h5netcdf',concat_dim='along_track', combine='nested', 
-                                drop_variables=['background_correction_factor_error_crosspolar', 
-                                                'background_correction_factor_error_mie',
-                                                'background_correction_factor_error_rayleigh',
-                                                'background_correction_factor_crosspolar',
-                                                'background_correction_factor_mie',
-                                                'background_correction_factor_rayleigh',
-                                                'mie_20km_spike_factor',
-                                                'ray_20km_spike_factor',
-                                                'copolar_polarsation_crosstalk_segment_error',
-                                                'copolar_polarsation_crosstalk_segment',
-                                                'crosspolar_polarsation_crosstalk_segment_error',
-                                                'crosspolar_polarsation_crosstalk_segment',
-                                                'rayleigh_spectral_crosstalk_STRAP_evaluations_error',
-                                                'rayleigh_spectral_crosstalk_STRAP_evaluations',
-                                                'valid_STRAP_rayleigh_spectral_crosstalk_segment_flag',
-                                                'rayleigh_spectral_crosstalk_surface_evaluations_error',
-                                                'rayleigh_spectral_crosstalk_surface_evaluations',
-                                                'valid_surface_rayleigh_spectral_crosstalk_segment_flag',
-                                                'segments_first_index',
-                                                'mie_spectral_crosstalk_segment_error',
-                                                'mie_spectral_crosstalk_segment'])
-        cprsd = xr.open_mfdataset(pathcpr, group='ScienceData/Data', phony_dims='sort', engine='h5netcdf',
-                                  concat_dim='phony_dim_10', combine='nested',
-                            drop_variables=['binStatusFlag', 'covarianceCoeff', 'dopplerStatusFlag',
-                                            'dopplerVelocity', 'dopplerVelocityAtSurfaceBin', 
-                                            'integrationNumberDoppler', 'integrationNumberEcho', 
-                                            'noiseFloorPower', 'operationalMode', 'pulseShapeWarnFlag',
-                                            'pulseWidth', 'radarCoefficient', 'rangeBinValidNumber',
-                                            'rayHeaderCalVers', 'rayHeaderLambda', 'rayQualityFlag',
-                                            'rayStatusFlag', 'rayStatusPrf', 'receivedEchoPower',
-                                            'satelliteVelocityContaminationInLOS', 'sigmaZero',
-                                            'spectrumWidth', 'subOperationalMode', 'surfaceBinFraction',
-                                            'surfaceBinNumber', 'surfaceEstimationFlag', 'transmitPower',
-                                            'transmitPowerAvg', 'txRxStatusFlag'])
-        cprgeo = xr.open_mfdataset(pathcpr, group='ScienceData/Geo', phony_dims='sort', engine='h5netcdf',
-                                   concat_dim='phony_dim_14', combine='nested',
-                                drop_variables=['navigationLandWaterFlg', 'pitchAngle', 'processingFrameNo',
-                                                'profileTime', 'rangeBinMaxNumber', 'rangeToFirstBin',
-                                                'rangeToIntercept', 'rayHeaderRangeBinSize', 'rayHeaderSpatAvg',
-                                                'rayNumber', 'rollAngle', 'satelliteVelocityX', 
-                                                'satelliteVelocityY', 'satelliteVelocityZ', 'solarAzimuthAngle',
-                                                'solarElevationAngle', 'surfaceElevation', 'timeFlag', 
-                                                'xPosition', 'yPosition', 'yawAngle', 'zPosition'])
-        cprgeo.rename_dims({'phony_dim_14': 'phony_dim_10'})
-        cpr = xr.merge([cprsd, cprgeo])
-        rac1 = helpers.preprocess_racmo_traj(xr.open_dataset(pathtraj[0]))
-        rac2 = helpers.preprocess_racmo_traj(xr.open_dataset(pathtraj[1]))
-        racfile = xr.concat([rac1, rac2], dim='rlat')
-        h_clm = clmfile.altitude_mid.values[0]
-    clm_mie = clmfile.ATB_Mie_co.values
+    clmfile = xr.open_dataset(pathclm)
+    atl = xr.open_dataset(pathatl, engine='h5netcdf')
+    cpr = xr.open_dataset(pathcpr, engine='h5netcdf')
+    racfile = xr.open_dataset(pathtraj).squeeze()
+    h_clm = clmfile.altitude_mid.values
+    clm_mie = clmfile.ATB_Mie_co.values + clmfile.ATB_Mie_cr.values
     clm_ray = clmfile.ATB_Ray.values
     h_traj = racfile.height.values
     rlat, rlon = CFTR.RealWorld2RotatedGrid(clmfile.Latitude.values, clmfile.Longitude.values, gridfile)
     (lat_EC_r, lon_EC_r), h_EC_r, lat_EC, lon_EC = RCM2EC_functions.get_EC_traj(atl, [55, 90, -105, 35], gridfile)
-    ec_mie, h_atl = RCM2EC_functions.get_EC_r(atl, 'mie_attenuated_backscatter', [55, 90, -105, 35], 
+    ec_mie, h_atl = RCM2EC_functions.get_EC_r(atl, 'mie_total_attenuated_backscatter_355nm', [55, 90, -105, 35], 
                                             h_clm[h_clm > 0], return_H=True)
     ec_mie, (lat_new, lon_new) = RCM2EC_functions.downsample(ec_mie, lat_EC, lon_EC, h_atl,
                                             rlat, rlon, h_clm,
                                             gridfile)
-    ec_ray, h_atl = RCM2EC_functions.get_EC_r(atl, 'rayleigh_attenuated_backscatter', [55, 90, -105, 35], 
+    ec_ray, h_atl = RCM2EC_functions.get_EC_r(atl, 'rayleigh_attenuated_backscatter_355nm', [55, 90, -105, 35], 
                                             h_clm[h_clm > 0], return_H=True)
     ec_ray, (lat_new, lon_new) = RCM2EC_functions.downsample(ec_ray, lat_EC, lon_EC, h_atl,
                                             rlat, rlon, h_clm,
@@ -353,20 +282,30 @@ def plot_l1_comparison(pathclm, pathtraj, pathatl, pathcpr, gridfile, savedir=No
     rac_refl = helpers.radar_sim(racfile.cldi.values, racfile.cldw.values, racfile.clds.values, 
                                  racfile.cldr.values, racfile.temp.values, racfile.hum.values, 
                                  racfile.p.values, racfile.height.values)
-    
-    ecval, hec = RCM2EC_functions.get_EC_r(cpr, 'radarReflectivityFactor', [55, 90, -105, 35], h_traj[h_traj > 0], 
-                                           return_H=True)
-    ecval = 10*np.log10(ecval)
+
+    ecval, hec = RCM2EC_functions.get_EC_r(cpr, 'reflectivity_corrected', [55, 90, -105, 35], h_traj[h_traj > 0], 
+                                           return_H=True)    
     ecval[~np.isfinite(ecval)] = -100
     ecval, (lat_new2, lon_new2) = RCM2EC_functions.downsample(ecval, lat_EC, lon_EC, hec,
                                             racfile.rlat.values, racfile.rlon.values, h_traj,
                                             gridfile)
-    ecval[(ecval > -0.01) & (ecval < 0.01)] = np.nan
     ecval[(ecval < -35)] = np.nan
-    ecval[:10] = np.nan
-    valid_lat = np.isin(lat_new2, lat_new) & np.isin(lon_new2, lon_new)
+    clut, hec = RCM2EC_functions.get_EC_r(cpr, 'significant_detection_classification', [55, 90, -105, 35], h_traj[h_traj > 0], 
+                                           return_H=True)
+    clut = clut.astype('float')
+    clut_plot = np.full(np.shape(clut), np.nan)
+    clut_plot[(clut >= 3) & (clut <=4)] = 1
+    clut_plot, (lat_new, lon_new) = RCM2EC_functions.downsample(clut_plot, lat_EC, lon_EC, hec,
+                                                                racfile.rlat.values, racfile.rlon.values, h_traj,
+                                                            gridfile, fillna=False)
+    for i in range(len(clut_plot[0])):
+        valid = np.where(~np.isnan(clut_plot[:,i]))[0]
+        if valid.size > 0:
+            terrain_idx = valid[0]
+            clut_plot[terrain_idx:,i] = 1
+    valid_lat = np.isin(np.round(lat_new2,2), np.round(lat_new,2)) & np.isin(np.round(lon_new2,2), np.round(lon_new,2))
     lat_new2, lon_new2 = lat_new2[valid_lat], lon_new2[valid_lat]
-    valid_lat2 = np.isin(lat_new, lat_new2) & np.isin(lon_new, lon_new2)
+    valid_lat2 = np.isin(np.round(lat_new,2), np.round(lat_new2,2)) & np.isin(np.round(lon_new,2), np.round(lon_new2,2))
     try:
         ecval = ecval[:, valid_lat]
         lat_new, lon_new = lat_new[valid_lat2], lon_new[valid_lat2]
@@ -376,9 +315,8 @@ def plot_l1_comparison(pathclm, pathtraj, pathatl, pathcpr, gridfile, savedir=No
         valid_lat = np.isin(lat_new2, lat_new) & np.isin(lon_new2, lon_new)
         ecval = ecval[:, valid_lat]
         lat_new, lon_new = lat_new[valid_lat2], lon_new[valid_lat2]
-    # lat_new2, lon_new2 = lat_new2[valid_lat], lon_new2[valid_lat]
-    valid_indices = np.isin(clmfile.Latitude.values, lat_new) & np.isin(clmfile.Longitude.values, lon_new)
-    valid_indices2 = np.isin(racfile.lat.values, lat_new) & np.isin(racfile.lon.values, lon_new)
+    valid_indices = np.isin(np.round(clmfile.Latitude.values,2), np.round(lat_new,2)) & np.isin(np.round(clmfile.Longitude.values,2), np.round(lon_new,2))
+    valid_indices2 = np.isin(np.round(racfile.lat.values,2), np.round(lat_new,2)) & np.isin(np.round(racfile.lon.values,2), np.round(lon_new,2))
     rac_refl = rac_refl[:, valid_indices2]
     clm_mie = clm_mie[:, valid_indices]
     clm_ray = clm_ray[:, valid_indices]
@@ -432,7 +370,7 @@ def plot_l1_comparison(pathclm, pathtraj, pathatl, pathcpr, gridfile, savedir=No
     plot2 = ax3.pcolormesh(x1, height, clm_mie.T, shading='auto', 
                         cmap='calipso', norm=norm1)
     plot3 = ax5.pcolormesh(x1, height, ec_ray.T, shading='auto', 
-                            cmap='lidar_ray', norm=norm1)
+                            cmap='plasma', norm=norm1)
     plot4 = ax7.pcolormesh(x1, height, clm_ray.T, shading='auto', 
                             cmap='plasma', norm=norm1)
     cbar1 = fig.colorbar(plot1, cax=cbar_ax1, orientation='vertical',
@@ -446,11 +384,13 @@ def plot_l1_comparison(pathclm, pathtraj, pathatl, pathcpr, gridfile, savedir=No
     x2 = np.tile(np.arange(0, len(lat_new), 1), (len(h_traj[:,0]),1)).T
     plot5 = ax9.pcolormesh(x2, h_traj.T/1000, ecval.T, shading='auto', 
                         cmap=ccm.batlow_r, norm=norm2)
+    ax9.pcolormesh(x2, h_traj.T/1000, clut_plot.T, shading='auto', 
+                       cmap='Greys', norm=mcolors.Normalize(0,2))
     plot6 = ax11.pcolormesh(x2, h_traj.T/1000, rac_refl.T, shading='auto', 
                         cmap=ccm.batlow_r, norm=norm2)
     cbar3 = fig.colorbar(plot5, cax=cbar_ax3, orientation='vertical',
                             label='Radar reflectivity [dBZ]',
-                            extend='both')
+                            extend='max')
     cbar3.ax.tick_params(labelsize=14)
     plot_topo(ax2, x1, h_traj[-1]/1000,height)
     plot_topo(ax4, x1, h_traj[-1]/1000,height)
@@ -534,31 +474,37 @@ def plot_l2a_IWC_precip(pathtraj, pathice, pathcld, pathtc, gridfile, savedir=No
     temp = racmo.temp.values
     hum = racmo.hum.values
     pres = racmo.p.values
-    if len(pathtraj) == 2:
-        un_idx = np.unique(racmo.lat.values, return_index=True)[1]
-        racmo_ice = racmo_ice[:, un_idx]
-        h_traj = h_traj[:, un_idx]
-        racmo_snow = racmo_snow[:, un_idx]
-        racmo_rain = racmo_rain[:, un_idx]
-        racmo_rain_kgkg = racmo_rain_kgkg[:, un_idx]
-        temp = temp[:, un_idx]
-        hum = hum[:, un_idx]
-        pres = pres[:, un_idx]
-        lat_rac = lat_rac[un_idx]
-        lon_rac = lon_rac[un_idx]
     aice, hec = RCM2EC_functions.get_EC_r(ecice, 'ice_water_content', [55, 90, -105, 35], h_traj[h_traj > 0], return_H=True)
     aice[~np.isfinite(aice)] = 0
-    
     if lat_lon is None:
         lat_in, lon_in = racmo.rlat.values, racmo.rlon.values
     else:
-        lat_in, lon_in = lat_lon
+        lat_in, lon_in = CFTR.RealWorld2RotatedGrid(lat_lon[0], lat_lon[1], gridfile)
     aice, (lat_new, lon_new) = RCM2EC_functions.downsample(aice, lat_EC, lon_EC, hec,
                                                             lat_in, lon_in, h_traj, gridfile)
     aice[np.abs(aice) > 1e20] = np.nan
     aice = aice/1e6
     aice[~np.isfinite(aice)] = 0
     racmo_ice[racmo_ice <= 1e-7] = np.nan
+    (lat_EC_r, lon_EC_r), h_EC_r, lat_EC, lon_EC = RCM2EC_functions.get_EC_traj(eccld, [55, 90, -105, 35], gridfile)
+    hclas, hec = RCM2EC_functions.get_EC_r(eccld, 'hydrometeor_classification', [55, 90, -105, 35], h_traj[h_traj > 0], 
+                                           return_H=True)
+    hclas = hclas.astype('float')
+    hclas_plot = np.full(np.shape(hclas), np.nan)
+    hclas_plot[(hclas >= 16) & (hclas <=19)] = 1
+    hclas[(hclas >= 16) & (hclas <=19)] = np.nan
+    hclas[np.isfinite(hclas)] = 1
+    hclas, (lat_new, lon_new) = RCM2EC_functions.downsample(hclas, lat_EC, lon_EC, hec,
+                                                            lat_in, lon_in, h_traj,
+                                                            gridfile, fillna=False)
+    hclas_plot, (lat_new, lon_new) = RCM2EC_functions.downsample(hclas_plot, lat_EC, lon_EC, hec,
+                                                            lat_in, lon_in, h_traj,
+                                                            gridfile, fillna=False)
+    for i in range(len(hclas_plot[0])):
+        valid = np.where(~np.isnan(hclas_plot[:,i]))[0]
+        if valid.size > 0:
+            terrain_idx = valid[0]
+            hclas_plot[terrain_idx:,i] = 1
     (lat_EC_r, lon_EC_r), h_EC_r, lat_EC, lon_EC = RCM2EC_functions.get_EC_traj(eccld, [55, 90, -105, 35], gridfile)
     cice, hec = RCM2EC_functions.get_EC_r(eccld, 'water_content', [55, 90, -105, 35], h_traj[h_traj > 0], return_H=True)
     cice[~np.isfinite(cice)] = 0
@@ -569,6 +515,8 @@ def plot_l2a_IWC_precip(pathtraj, pathice, pathcld, pathtc, gridfile, savedir=No
     cwat, (lat_new2, lon_new2) = RCM2EC_functions.downsample(cwat, lat_EC, lon_EC, hec,
                                             lat_in, lon_in, h_traj, gridfile)
     cwat[~np.isfinite(cwat)] = 0
+    cice *= hclas
+    cwat *= hclas
     cice -= cwat
     cice[cice <= 1e-7] = np.nan
     cice[~np.isfinite(cice)] = 0
@@ -577,6 +525,7 @@ def plot_l2a_IWC_precip(pathtraj, pathice, pathcld, pathtc, gridfile, savedir=No
     cprec_flx[~np.isfinite(cprec_flx)] = 0
     cprec_flx, (lat_new2, lon_new2) = RCM2EC_functions.downsample(cprec_flx, lat_EC, lon_EC, hec,
                                                                 lat_in, lon_in, h_traj, gridfile)
+    cprec_flx *= hclas
     racmo_snow_flx = racmo_snow * 2 # to go to the flux, based on fall speed of 2 m/s
     racmo_snow_flx[racmo_snow_flx <= 1e-7] = np.nan
     rho = helpers.density(temp, hum, pres)
@@ -585,7 +534,7 @@ def plot_l2a_IWC_precip(pathtraj, pathice, pathcld, pathtc, gridfile, savedir=No
     cvel = RCM2EC_functions.get_EC_r(eccld, 'sedimentation_velocity', [55, 90, -105, 35], h_traj[h_traj > 0])
     cvel, (lat_new2, lon_new2) = RCM2EC_functions.downsample(cvel, lat_EC, lon_EC, hec,
                                             lat_in, lon_in, h_traj, gridfile)
-
+    cvel *= hclas
     racmo_snow[racmo_snow <= 1e-7] = np.nan
     racmo_rain[racmo_rain <= 1e-7] = np.nan
     cvel[cvel <= 1e-3] = np.nan
@@ -606,12 +555,13 @@ def plot_l2a_IWC_precip(pathtraj, pathice, pathcld, pathtc, gridfile, savedir=No
     cice = cice - crain2
     csnow_flx = cprec_flx*snow_mask 
     crain_flx = cprec_flx*rain_mask 
+    cvel[(~np.isfinite(csnow_flx)) & (~np.isfinite(crain_flx))] = np.nan
     if lat_lon is None:
-        valid_lat = np.isin(lat_new2, lat_new) & np.isin(lon_new2, lon_new)
+        valid_lat = np.isin(np.round(lat_new2, 2), np.round(lat_new, 2)) & np.isin(np.round(lon_new2, 2), np.round(lon_new, 2))
         lat_new2, lon_new2 = lat_new2[valid_lat], lon_new2[valid_lat]
-        valid_lat2 = np.isin(lat_new, lat_new2) & np.isin(lon_new, lon_new2)
+        valid_lat2 = np.isin(np.round(lat_new, 2), np.round(lat_new2, 2)) & np.isin(np.round(lon_new, 2), np.round(lon_new2, 2))
         lat_new, lon_new = lat_new[valid_lat2], lon_new[valid_lat2]
-        valid_indices = np.isin(lat_in, lat_new) & np.isin(lon_in, lon_new)
+        valid_indices = np.isin(np.round(lat_in, 2), np.round(lat_new, 2)) & np.isin(np.round(lon_in, 2), np.round(lon_new, 2))
         aice = aice[:, valid_lat2]
         cice = cice[:, valid_lat]
         csnow = csnow[:, valid_lat]
@@ -624,7 +574,7 @@ def plot_l2a_IWC_precip(pathtraj, pathice, pathcld, pathtc, gridfile, savedir=No
         racmo_rain_flx = racmo_rain_flx[:, valid_indices]
         h_traj = h_traj[:, valid_indices]
     else:
-        valid_indices = np.isin(lat_rac, lat_new) & np.isin(lon_rac, lon_new)
+        valid_indices = np.isin(np.round(lat_rac, 2), np.round(lat_new, 2)) & np.isin(np.round(lon_rac, 2), np.round(lon_new, 2))
         h_traj = h_traj[:, valid_indices]
         racmo_ice = racmo_ice[:, valid_indices]
         racmo_snow = racmo_snow[:, valid_indices]
@@ -666,6 +616,7 @@ def plot_l2a_IWC_precip(pathtraj, pathice, pathcld, pathtc, gridfile, savedir=No
         c_re_sig = c_re_sig[:, valid_lat]
     comp = helpers.compute_composite(aice, aice_sig, a_re, a_re_sig, 
                     cice, cice_sig, c_re_sig)
+    comp *= hclas
     comp[comp < 1e-7] = np.nan
     aice[aice <= 1e-7] = np.nan
     cice[cice <= 1e-7] = np.nan
@@ -683,12 +634,20 @@ def plot_l2a_IWC_precip(pathtraj, pathice, pathcld, pathtc, gridfile, savedir=No
     cellheight[:,1:] = height[:,:-1] - height[:,1:]
     fractionsec = np.zeros(totalbins)
     fractionsrac = np.zeros(totalbins)
-    counts, bins, patches = plt.hist(comp.flatten(), bins=xedges,
-                                    weights=cellheight.flatten())
-    fractionsec[1:] = counts / np.nansum(cellheight.flatten()) #counts.sum()
-    counts, bins, patches = plt.hist(racmo_ice.flatten(), bins=xedges, 
-                                    weights=cellheight.flatten())
-    fractionsrac[1:] = counts / np.nansum(cellheight.flatten()) #counts.sum()
+    eci = comp.flatten()
+    ecw = cellheight.flatten()
+    ecw = ecw[np.isfinite(eci)] 
+    eci = eci[np.isfinite(eci)]
+    ri = racmo_ice.flatten()*hclas.flatten()
+    rw = cellheight.flatten()
+    rw = rw[np.isfinite(ri)] 
+    ri = ri[np.isfinite(ri)]
+    counts, bins, patches = plt.hist(eci, bins=xedges,
+                                    weights=ecw)
+    fractionsec[1:] = counts / np.nansum(ecw) 
+    counts, bins, patches = plt.hist(ri, bins=xedges, 
+                                    weights=rw)
+    fractionsrac[1:] = counts / np.nansum(rw)
     plt.clf()
     cmap = ccm.batlow_r
     colors = cmap(np.linspace(0, 1, 10))
@@ -700,6 +659,8 @@ def plot_l2a_IWC_precip(pathtraj, pathice, pathcld, pathtc, gridfile, savedir=No
         cbar_ax1 = fig.add_axes([0.08, -0.025, 0.59, 0.045])
         ax1, ax3, ax5 = axes
         ax2, ax4 = ax1.twiny(), ax3.twiny()
+        ax1.pcolormesh(x1, height, hclas_plot.T, shading='auto', 
+                       cmap='Greys', norm=mcolors.Normalize(0,2))
         plot1 = ax1.pcolormesh(x1, height, comp.T, shading='auto', 
                                 cmap=ccm.batlow_r, norm=norm1)
         plot2 = ax3.pcolormesh(x1, height, racmo_ice.T, shading='auto', 
@@ -726,7 +687,7 @@ def plot_l2a_IWC_precip(pathtraj, pathice, pathcld, pathtc, gridfile, savedir=No
         ax5.set_title('(c)', loc='left', y=1.22)
         ax5.set_xscale('log')
         ax5.set_xlabel(r'Ice water content [kg m$^{-3}$]')
-        ax5.set_ylim(0, 0.08)
+        ax5.set_ylim(0, 0.2)
         ax5.set_ylabel('Fraction of gridcell area [-]')
         plt.tight_layout()
         ax5.legend(frameon=False, bbox_to_anchor=(-0.25,-0.55), ncol=2, loc='lower left', columnspacing=1)
@@ -742,8 +703,12 @@ def plot_l2a_IWC_precip(pathtraj, pathice, pathcld, pathtc, gridfile, savedir=No
         ax2, ax4, ax6, ax8 = ax1.twiny(), ax3.twiny(), ax5.twiny(), ax7.twiny()
         plot1 = ax1.pcolormesh(x1, height, aice.T, shading='auto', 
                             cmap=ccm.batlow_r, norm=norm1)
+        ax3.pcolormesh(x1, height, hclas_plot.T, shading='auto', 
+                       cmap='Greys', norm=mcolors.Normalize(0,2))
         plot2 = ax3.pcolormesh(x1, height, cice.T, shading='auto', 
                             cmap=ccm.batlow_r, norm=norm1)
+        ax5.pcolormesh(x1, height, hclas_plot.T, shading='auto', 
+                      cmap='Greys', norm=mcolors.Normalize(0,2))
         plot3 = ax5.pcolormesh(x1, height, comp.T, shading='auto', 
                                 cmap=ccm.batlow_r, norm=norm1)
         plot4 = ax7.pcolormesh(x1, height, racmo_ice.T, shading='auto', 
@@ -786,7 +751,7 @@ def plot_l2a_IWC_precip(pathtraj, pathice, pathcld, pathtc, gridfile, savedir=No
         ax9.set_title('(c)', loc='left', y=1.22)
         ax9.set_xscale('log')
         ax9.set_xlabel(r'Ice water content [kg m$^{-3}$]')
-        ax9.set_ylim(0, 0.08)
+        ax9.set_ylim(0, 0.2)
         ax9.set_ylabel('Area-weighted fraction [-]')
         plt.subplots_adjust(wspace=0.05, hspace=0.05)
         plt.tight_layout()
@@ -807,10 +772,14 @@ def plot_l2a_IWC_precip(pathtraj, pathice, pathcld, pathtc, gridfile, savedir=No
         ax2, ax4, ax6 = ax1.twiny(), ax3.twiny(), ax5.twiny()
         height = np.flip(np.flipud(h_traj.T/1000), axis=0)
         x1 = np.tile(np.arange(0, len(lat_new), 1), (len(height[0]),1)).T
+        ax1.pcolormesh(x1, height, hclas_plot.T, shading='auto', 
+                       cmap='Greys', norm=mcolors.Normalize(0,2))
         plot1 = ax1.pcolormesh(x1, height, csnow_flx.T, shading='auto', 
                             cmap=ccm.batlow_r, norm=norm1)
         plot2 = ax3.pcolormesh(x1, height, racmo_snow_flx.T, shading='auto', 
                             cmap=ccm.batlow_r, norm=norm1)
+        ax5.pcolormesh(x1, height, hclas_plot.T, shading='auto', 
+                       cmap='Greys', norm=mcolors.Normalize(0,2))
         plot3 = ax5.pcolormesh(x1, height, cvel.T, shading='auto', 
                                 cmap=ccm.batlow_r, norm=norm2)
         cbar1 = fig.colorbar(plot1, cax=cbar_ax1, orientation='horizontal',
@@ -855,12 +824,18 @@ def plot_l2a_IWC_precip(pathtraj, pathice, pathcld, pathtc, gridfile, savedir=No
         ax2, ax4, ax6, ax8, ax10 = ax1.twiny(), ax3.twiny(), ax5.twiny(), ax7.twiny(), ax9.twiny()
         height = np.flip(np.flipud(h_traj.T/1000), axis=0)
         x1 = np.tile(np.arange(0, len(lat_new), 1), (len(height[0]),1)).T
+        ax1.pcolormesh(x1, height, hclas_plot.T, shading='auto', 
+                       cmap='Greys', norm=mcolors.Normalize(0,2))
         plot1 = ax1.pcolormesh(x1, height, csnow_flx.T, shading='auto', 
                             cmap=ccm.batlow_r, norm=norm1)
         plot2 = ax3.pcolormesh(x1, height, racmo_snow_flx.T, shading='auto', 
                             cmap=ccm.batlow_r, norm=norm1)
+        ax5.pcolormesh(x1, height, hclas_plot.T, shading='auto', 
+                       cmap='Greys', norm=mcolors.Normalize(0,2))
         plot3 = ax5.pcolormesh(x1, height, cvel.T, shading='auto', 
                                 cmap=ccm.batlow_r, norm=norm2)
+        ax7.pcolormesh(x1, height, hclas_plot.T, shading='auto', 
+                       cmap='Greys', norm=mcolors.Normalize(0,2))
         plot4 = ax7.pcolormesh(x1, height, crain_flx.T, shading='auto', 
                             cmap=ccm.batlow_r, norm=norm1)
         plot5 = ax9.pcolormesh(x1, height, racmo_rain_flx.T, shading='auto', 
@@ -913,7 +888,7 @@ def plot_l2a_IWC_precip(pathtraj, pathice, pathcld, pathtc, gridfile, savedir=No
 
 def plot_TC2b_comparison(pathtraj, pathtc, gridfile, savedir=None, date=None, 
                           order='horizontal',
-                         lat_lon=None):
+                         lat_lon=None, clutter=None):
     """
     Plots a comparison between RACMO and EarthCARE data.
     Parameters:
@@ -922,7 +897,8 @@ def plot_TC2b_comparison(pathtraj, pathtc, gridfile, savedir=None, date=None,
     gridfile (str): Path to the grid settings file.
     savedir (str): Directory to save the output plots.
     date (datetime, optional): Date of the data for the plot title.
-
+    lat_lon (array): lat, lon coordinates to align with other plots
+    clutter (array): array with clutter mask from other plots
     Returns:
     None
     """
@@ -944,7 +920,7 @@ def plot_TC2b_comparison(pathtraj, pathtc, gridfile, savedir=None, date=None,
     tc, ec_snow, ec_rain, (lat_new, lon_new) = RCM2EC_functions.downsample_l2b_classification(tc, lat_EC, lon_EC, hec,
                                                                 lat_in, lon_in, h_traj, gridfile)
     tc[tc > 1] = np.nan
-    valid_indices = np.isin(racmo.lat.values, lat_new) & np.isin(racmo.lon.values, lon_new)
+    valid_indices = np.isin(np.round(racmo.lat.values,2), np.round(lat_new,2)) & np.isin(np.round(racmo.lon.values,2), np.round(lon_new,2))
     racmo_tc = racmo_tc[:, valid_indices]
     rac_snow = rac_snow[:, valid_indices]
     rac_rain = rac_rain[:, valid_indices]
@@ -956,7 +932,8 @@ def plot_TC2b_comparison(pathtraj, pathtc, gridfile, savedir=None, date=None,
                         np.flip(np.flipud(h_traj.T/1000), axis=0), 
                         lat_new, lon_new, 
                         'tc', None, r'', savedir, 
-                        'tc_2b', date=date, order=order)
+                        'tc_2b', date=date, order=order,
+                        clutter=clutter)
     return
     
     
@@ -1161,3 +1138,257 @@ def racmo_overview_plot(path_rac_3D, path_traj, path_siconca,
     fig.tight_layout()
     if savedir != None:
         plt.savefig(f"{savedir}racmo_overview_{date.strftime('%Y%m%d%H%M')}.png", bbox_inches='tight', dpi=300, format='png')
+
+def racmo_overview_plot_ERA5(path_rac_3D, path_traj, path_siconca, 
+                             path_era5_cld, path_era5_si, path_era5_z500,
+                            dtop, savedir=None, date=None, 
+                            lat_lon=None, add_loc=None):
+    racmo3D = xr.open_dataset(path_rac_3D).squeeze()
+    date = datetime.strptime(path_rac_3D[-17:-5], '%Y%m%d%H%M')
+    siconca = xr.open_dataset(path_siconca).squeeze().sel(time=date, method='nearest')
+    era5_cld = xr.open_dataset(path_era5_cld)
+    era5_si = xr.open_dataset(path_era5_si)
+    era5_z500 = xr.open_dataset(path_era5_z500)
+    lat_era = era5_cld.latitude.values
+    lon_era = era5_cld.longitude.values
+    if len(path_traj) != 2:
+        racmo = xr.open_dataset(path_traj).squeeze()
+    else:
+        rac1 = helpers.preprocess_racmo_traj(xr.open_dataset(path_traj[0]))
+        rac2 = helpers.preprocess_racmo_traj(xr.open_dataset(path_traj[1]))
+        racmo = xr.concat([rac1, rac2], dim='rlat')
+    height = RCM2EC_functions.plev2gph(racmo3D.temp.values, racmo3D.hum.values, 
+                                       racmo3D.ps.values, dtop.Geopotential.values)
+    dh = height[:-1] - height[1:]
+    cldt = racmo3D.cldi.values + racmo3D.cldw.values + racmo3D.clds.values + racmo3D.cldr.values
+    cldt = helpers.kgkg_to_kgm3(cldt, racmo3D.temp.values, racmo3D.hum.values, 
+                                racmo3D.p.values)
+    twp = np.sum(cldt[:-1]*dh, axis=0) 
+    twp[twp == 0] = np.nan
+    twp_era5 = era5_cld.tciw.values + era5_cld.tclw.values + era5_cld.tcrw.values + era5_cld.tcsw.values
+    twp_era5[twp_era5 == 0] = np.nan
+    box = np.ones(np.shape(twp))
+    cmap = mpl.colors.ListedColormap(ccm.batlow_r(np.linspace(0, 0.8, 256)))
+    norm=mcolors.SymLogNorm(linthresh=1e-4,
+                                vmin=1e-3, vmax=1)
+    fig = plt.figure(figsize=(16,6.3))
+    gs1 = gridspec.GridSpec(1, 1, right=0.39)
+    gs2 = gridspec.GridSpec(2, 2, left=0.46,
+                           wspace=0.1, hspace=0.15)
+    projection=crs.RotatedPole(pole_latitude=-18, pole_longitude=-37.5,
+                               central_rotated_longitude=0)
+    ax1 = fig.add_subplot(gs1[0, 0],projection=projection)  
+    ax2 = fig.add_subplot(gs2[0, 0])
+    ax4 = fig.add_subplot(gs2[0, 1])
+    ax6 = fig.add_subplot(gs2[1, 0]) 
+    ax8 = fig.add_subplot(gs2[1, 1])  
+    MapLL_TR_lat = np.array([  42, 71])  
+    MapLL_TR_lon = np.array([-60, 60])
+    MapXextent, MapYextent, _ = projection.transform_points(crs.PlateCarree(), MapLL_TR_lon, MapLL_TR_lat).T
+    ax1.set_xlim([MapXextent[0], MapXextent[1]])
+    ax1.set_ylim([MapYextent[0], MapYextent[1]])
+    plot = ax1.pcolormesh(lon_era, lat_era, twp_era5.squeeze(), 
+                  norm=norm, cmap=cmap, transform=crs.PlateCarree(), rasterized=False,
+                  zorder=1)
+    siplot = ax1.contour(lon_era, lat_era,
+                          era5_si.siconc.values.squeeze(), colors='black',
+                          transform=crs.PlateCarree(), levels=[0.15], 
+                          linewidths=1, zorder=2)
+    sihatch = ax1.contourf(lon_era, lat_era,
+                          era5_si.siconc.values.squeeze(), transform=crs.PlateCarree(), 
+                        levels=[0,0.15,1], colors='none', 
+                        hatches=['', 'x'], alpha=0, zorder=3)
+    levels = np.arange(4600, 6001, 100)
+    gp = ax1.contour(lon_era, lat_era,
+                     era5_z500.z.values.squeeze()/9.81, colors='purple', transform=crs.PlateCarree(),
+                     levels = levels, linewidths=1, linestyles='dashed',zorder=4) 
+    ax1.clabel(gp, levels[::],  
+        fmt='%1.0f', fontsize=8, zorder=5)
+    gl = ax1.gridlines(crs=crs.PlateCarree(),
+                    draw_labels=True,
+                    linewidth=0)
+    gl.xlocator = FixedLocator(np.arange(-180, 181, 20))
+    gl.ylocator = FixedLocator(np.arange(-90, 91, 10))
+    gl.top_labels = False
+    gl.left_labels = False
+    gl.x_inline = False
+    gl.y_inline = False
+    b = ax1.pcolormesh(racmo3D.lon.values, racmo3D.lat.values, box, vmin=0, vmax=1, cmap='Greys_r',
+                       transform=crs.PlateCarree(), zorder=6, rasterized=False)
+    plot = ax1.pcolormesh(racmo3D.lon.values, racmo3D.lat.values, twp,
+                        norm=norm, cmap=cmap, transform=crs.PlateCarree(), 
+                        zorder=7, rasterized=False)
+    box[0] = 0
+    box[-1] = 0
+    box[:,0] = 0
+    box[:,-1] = 0
+    b = ax1.contour(racmo3D.lon.values, racmo3D.lat.values, box, levels=[0.5], colors='black',
+                    transform=crs.PlateCarree(), rasterized=False, linewidths=2, zorder=8)
+    ax1.add_feature(ccrs.COASTLINE, zorder=9, 
+                        edgecolor='black')
+    cbar_ax = fig.add_axes([0.135, -0.03, 0.245, 0.03])
+    cb = fig.colorbar(plot, cax=cbar_ax, 
+                      label='Total cloud and precipitation water path, \n vertically integrated [kg $m^{-2}$]', 
+                      extend='max',
+                      orientation="horizontal")
+    cb.ax.minorticks_off()
+    cb.ax.tick_params(labelsize=14)
+    seaice = siconca.siconca.values
+    seaice[dtop.LSM.values > 0] = 0
+    siplot = ax1.contour(siconca.lon.values, siconca.lat.values,
+                          seaice, colors='black',
+                          transform=crs.PlateCarree(), levels=[0.15], 
+                          linewidths=1, zorder=10)#, linestyles='dashed')
+    sihatch = ax1.contourf(siconca.lon.values, siconca.lat.values,
+                        seaice, transform=crs.PlateCarree(), 
+                        levels=[0,0.15,1], colors='none', 
+                        hatches=['', 'x'], alpha=0, zorder=11)
+    fi500 = helpers.geopotential_500hpa(racmo3D.p.values, height)
+    levels = np.arange(4600, 6001, 100)
+    gp = ax1.contour(racmo3D.lon.values, racmo3D.lat.values,
+                     fi500, colors='purple', transform=crs.PlateCarree(),
+                     levels = levels, linewidths=1, linestyles='dashed', zorder=12) 
+    ax1.clabel(gp, levels[::],  
+        fmt='%1.0f', fontsize=8,zorder=13)
+    ax1.scatter(racmo.lon.values, racmo.lat.values,  s=20, marker='.', c='black', 
+               zorder=14,
+               transform=crs.PlateCarree())
+    ax1.set_title('(a)', loc='left', y=1.1)
+    lons = np.arange(-180, 181, 20)
+    lats = np.arange(-90, 91, 10)
+    for lat in lats:
+        ax1.plot(
+            np.linspace(-180, 180, 361),
+            np.full(361, lat),
+            transform=crs.PlateCarree(),
+            color='black',
+            linestyle='--',
+            linewidth=1,
+            alpha=0.5,
+            zorder=100
+        )
+    for lon in lons:
+        ax1.plot(
+            np.full(181, lon),
+            np.linspace(-90, 90, 181),
+            transform=crs.PlateCarree(),
+            color='black',
+            linestyle='--',
+            linewidth=1,
+            alpha=0.5,
+            zorder=100
+        )
+    box[box == 1] = np.nan
+    cmapblack = mcolors.ListedColormap(['black'])
+    cmapblack.set_bad(color=(0, 0, 0, 0))
+    b = ax1.pcolormesh(racmo3D.lon.values, racmo3D.lat.values, box, vmin=0, vmax=1, cmap=cmapblack,
+                       transform=crs.PlateCarree(), zorder=15, rasterized=False, facecolor=None)
+    height = racmo.height.values/1000
+    lat = racmo.lat.values
+    lon = racmo.lon.values
+    cldi = racmo.cldi.values
+    cldw = racmo.cldw.values
+    clds = racmo.clds.values
+    cldr = racmo.cldr.values
+    temp = racmo.temp.values
+    cldi = helpers.kgkg_to_kgm3(cldi, racmo.temp.values, racmo.hum.values, 
+                                racmo.p.values)
+    cldw = helpers.kgkg_to_kgm3(cldw, racmo.temp.values, racmo.hum.values, 
+                                racmo.p.values)
+    clds = helpers.kgkg_to_kgm3(clds, racmo.temp.values, racmo.hum.values, 
+                                racmo.p.values)
+    cldr = helpers.kgkg_to_kgm3(cldr, racmo.temp.values, racmo.hum.values, 
+                                racmo.p.values)
+    cldi[cldi < 1e-7] = np.nan
+    cldw[cldw < 1e-7] = np.nan
+    clds[clds < 1e-7] = np.nan
+    cldr[cldr < 1e-7] = np.nan
+    if lat_lon is not None:
+        lat_val, lon_val = lat_lon
+        valid_indices = np.isin(np.round(lat,2), np.round(lat_val,2)) & np.isin(np.round(lon,2), np.round(lon_val,2))
+        height = height[:, valid_indices]
+        cldi = cldi[:, valid_indices]
+        cldw = cldw[:, valid_indices]
+        clds = clds[:, valid_indices]
+        cldr = cldr[:, valid_indices]
+        temp = temp[:, valid_indices]
+        lat = lat[valid_indices]
+        lon = lon[valid_indices]
+    if len(path_traj) == 2:
+        un_idx = np.unique(lat, return_index=True)[1]
+        cldi = cldi[:, un_idx]
+        cldw = cldw[:, un_idx]
+        clds = clds[:, un_idx]
+        cldr = cldr[:, un_idx]
+        height = height[:, un_idx]
+        temp = temp[:, un_idx]
+        lat = lat[un_idx]
+        lon = lon[un_idx]
+    norm = mcolors.SymLogNorm(linthresh=1e-10, vmin=1e-7, vmax=1e-3) 
+    cbar_ax1 = fig.add_axes([0.46, -0.03, 0.42, 0.03])
+    orientation = 'horizontal'
+    ax3, ax5, ax7, ax9 = ax2.twiny(), ax4.twiny(), ax6.twiny(), ax8.twiny()
+    x = np.tile(np.arange(0, len(lat), 1), (len(height),1))
+    plot1 = ax2.pcolormesh(x, height, cldi, shading='auto', 
+                        cmap=cmap, norm=norm, zorder=5)
+    plot2 = ax4.pcolormesh(x, height, cldw, shading='auto', 
+                        cmap=cmap, norm=norm, zorder=5)
+    plot3 = ax6.pcolormesh(x, height, clds, shading='auto', 
+                            cmap=cmap, norm=norm, zorder=5)
+    plot4 = ax8.pcolormesh(x, height, cldr, shading='auto', 
+                            cmap=cmap, norm=norm, zorder=5)
+    tlevels = np.arange(-50, 20.1, 10)
+    tempC = temp - 273.16
+    t = ax8.contour(x, height, tempC, 
+                     colors='black', #xkcd:bluegrey
+                     levels = tlevels,
+                    linewidths=0.5, linestyles='dashed')
+    ax8.clabel(t, tlevels[::],  
+                fmt='%1.0f', fontsize=6)
+    ax2.contour(x, height, tempC, 
+                     colors='black',
+                     levels = tlevels,
+                    linewidths=0.5, linestyles='dashed')
+    ax4.contour(x, height, tempC, 
+                     colors='black',
+                     levels = tlevels,
+                    linewidths=0.5, linestyles='dashed')
+    ax6.contour(x, height, tempC, 
+                     colors='black',
+                     levels = tlevels,
+                    linewidths=0.5, linestyles='dashed')
+    cbar1 = fig.colorbar(plot1, cax=cbar_ax1, orientation=orientation,
+                        label='Water content [kg m$^{-3}$]',
+                        extend='max')
+    cbar1.ax.tick_params(labelsize=14)
+    height_reg = np.tile(np.arange(0,15.01,0.1), (len(lat),1))
+    x_reg = np.tile(np.arange(0, len(lat), 1), (len(height_reg[0]),1)).T
+    plot_topo(ax2, x_reg, height[-1], height_reg)
+    plot_topo(ax4, x_reg, height[-1], height_reg)
+    plot_topo(ax6, x_reg, height[-1], height_reg)
+    plot_topo(ax8, x_reg, height[-1], height_reg)
+    format_lat_lon_height(ax2, ax3, lat, lon, height=None, x1label=False)
+    format_lat_lon_height(ax4, ax5, lat, lon, height=None, ylabel=False, x1label=False)
+    format_lat_lon_height(ax6, ax7, lat, lon, height=None, x2label=False)
+    format_lat_lon_height(ax8, ax9, lat, lon, height=None, ylabel=False, x2label=False)
+    ax2.set_title('(b)', loc='left')
+    ax4.set_title('(c)', loc='left')
+    ax6.set_title('(d)', loc='left')
+    ax8.set_title('(e)', loc='left')
+    ax2.set_title('Ice water content')
+    ax4.set_title('Liquid water content')
+    ax6.set_title('Snow water content')
+    ax8.set_title('Rain water content')
+    ax2.tick_params(labelbottom=False, bottom=False)
+    ax4.tick_params(labelleft=False, left=False,
+                    labelbottom=False, bottom=False)
+    ax7.tick_params(labeltop=False, top=False)
+    ax9.tick_params(labeltop=False, top=False)
+    ax8.tick_params(labelleft=False, left=False)
+    fig.subplots_adjust(top=0.85, right=0.88)
+    if add_loc != None:
+        ax2.text(10, 14, add_loc, fontsize=10)
+    fig.tight_layout()
+    if savedir != None:
+        plt.savefig(f"{savedir}racmo_overview_{date.strftime('%Y%m%d%H%M')}.png", 
+                    bbox_inches='tight', dpi=300, format='png')
