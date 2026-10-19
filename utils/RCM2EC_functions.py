@@ -518,7 +518,6 @@ def downsample_l2b_classification(clas, latitudes, longitudes, heights, target_l
     downsampled_data = downsampled_data / count
     downsampled_snow[(snow >= 0.5*count_snow) & (count_snow > 0)] = 1
     downsampled_rain[(rain >= 0.5*count_rain) & (count_rain > 0)] = 1
-    # downsampled_data[(snow >= 0.5*count_snow) & (count_snow > 0)] = np.nan
     nan_mask = np.isnan(downsampled_data)
     lat_mis = []
     lon_mis = []

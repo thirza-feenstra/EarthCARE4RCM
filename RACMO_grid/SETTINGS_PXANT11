@@ -1,0 +1,9 @@
+setenv NLAT  591
+setenv NLON  726
+setenv NLEV  40
+setenv SOUTH  -31.000
+setenv WEST  -39.300
+setenv NORTH  28.000
+setenv EAST  33.200
+setenv POLON  20.000
+setenv POLAT  185.000

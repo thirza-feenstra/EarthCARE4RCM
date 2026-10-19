@@ -12,9 +12,9 @@ Helper functions
 @author: Thirza Feenstra
 """
 
-
 import numpy as np
 from scipy import special
+from math import gamma
 
 def kgkg_to_kgm3(conc, temp, hum, pres):
     '''convert water concentration from kg/kg to kg/m3'''
@@ -67,6 +67,84 @@ def rain_fallspeed(rwc, rho):
         const = 386.8 * special.gamma(4.67) / special.gamma(4)
         fall[i] = (1/rho[i])**0.4 * const * lam**(-0.67)
     return fall
+
+
+def blowing_snow_fallspeed(pressure,
+                            temperature,
+                            qb,
+                            height,
+                            ustar=0.30,
+                            z0=1e-3,
+                            zsalt=0.05):
+    '''
+    Compute blowing snow fallspeed,
+    based on offline Python code of 
+    Piektuk-D model 
+    (https://zenodo.org/records/19252674).
+    '''
+    ni = 16
+    visc = 1.53e-5
+    dice = 917.0
+    g = 9.80665
+    Rd = 287.0
+    kappa = 0.40
+    alpha = 4.0
+    ar = 1e-4
+    beta = ar / alpha
+    m = 3.0
+    pressure = np.asarray(pressure)
+    temperature = np.asarray(temperature)
+    height = np.asarray(height)
+    qb = np.asarray(qb)
+    rho = pressure / (Rd * temperature)
+    qb0 = qb[0] if qb.ndim > 0 else qb
+    rho0 = rho[0]
+    rzeta = np.linspace(0.0, 1.0, ni)
+    stretch = 0.5 * (1.0 + np.tanh(2.1 * (rzeta - 0.5)) / np.tanh(1.05))
+    radlb = 2e-6
+    radub = 400e-6
+    drn = np.zeros(ni + 1)
+    rn = np.zeros(ni + 1)
+    for i in range(1, ni + 1):
+        drn[i] = stretch[i - 1] * (radub - radlb) + radlb
+    for i in range(1, ni + 1):
+        rn[i] = 0.5 * (drn[i] - drn[i - 1]) + drn[i - 1]
+    rn[1] = radlb
+    ri = rn[1:]
+    dr = drn[1:] - drn[:-1]
+    N0 = (
+        3.0 * rho0 * qb0
+        * gamma(alpha)
+        / (4.0 * np.pi * dice * gamma(alpha + 3.0) * beta**3)
+    )
+    fi = ri**(alpha - 1) * np.exp(-ri / beta) / beta**alpha
+    F0 = N0 * fi / gamma(alpha)
+    ri2 = ri[None, :]
+    rho2 = rho[:, None]
+    vt_2d = (
+        -12.0 * visc
+        + np.sqrt(
+            144.0 * visc**2
+            + 20.6336 * ri2**3 * g * dice / rho2
+        )
+    ) / (3.8688 * ri2)
+    zratio = (height[:, None] + z0) / (zsalt + z0)
+    exponent = -vt_2d / (kappa * ustar)
+    log_height_factor = exponent * np.log(zratio)
+    log_height_factor = np.clip(log_height_factor, -20, 20)
+    height_factor = np.exp(log_height_factor)
+    Fr = F0[None, :] * height_factor
+    Fr = np.maximum(Fr, 1e-300) 
+    weight = ri**m * dr
+    numerator = np.sum(vt_2d * Fr * weight[None, :], axis=1)
+    denominator = np.sum(Fr * weight[None, :], axis=1)
+    w = np.divide(
+        numerator,
+        denominator,
+        out=np.full_like(numerator, np.nan, dtype=float),
+        where=denominator > 0
+    )
+    return w
 
 def compute_composite(a_iwc, a_sig_iwc, a_re, a_sig_re, 
                       c_iwc, c_sig_iwc_log, c_sig_re_log):

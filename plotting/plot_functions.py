@@ -18,6 +18,8 @@ import matplotlib.colors as mcolors
 import cartopy.crs as crs
 import cartopy.feature as ccrs
 from datetime import datetime
+import cartopy.io.shapereader as shpreader
+from cartopy.feature import ShapelyFeature
 sys.path.append('../utils/')
 import RCM2EC_functions 
 import helpers
@@ -1392,3 +1394,289 @@ def racmo_overview_plot_ERA5(path_rac_3D, path_traj, path_siconca,
     if savedir != None:
         plt.savefig(f"{savedir}racmo_overview_{date.strftime('%Y%m%d%H%M')}.png", 
                     bbox_inches='tight', dpi=300, format='png')
+        
+        
+def GrIS_Ant_maps_diff(data1_g, data2_g, data1_a, data2_a, lat_g, lon_g, lat_a, lon_a, 
+                       cmap, vmin, vmax, extend='both', log=False, 
+                        title1=None, title2=None, title3=None, clabel=None, unit='[-]',
+                        masked=True, mdiff='relative', savepath=None, cmap2=ccm.vik):
+    '''
+
+    Parameters
+    ----------
+    data : data to be plotted
+    cmap : colormap
+    vmin, vmax : range for colors
+    title : figure title (optional)
+    clabel : colorbar label
+    masked : True if only showing values over land. The default is True.
+
+    Returns
+    -------
+    Plot of values of variable over the GrIS
+
+    '''
+    if isinstance(cmap, str):
+        cmap = plt.get_cmap(cmap)
+    else:
+        cmap = cmap
+    if log:
+        if vmin <= 0:
+            norm=mcolors.SymLogNorm(linthresh=1e-6,
+                                vmin=vmin, vmax=vmax)
+            if mdiff=='relative':
+                norm2 = mcolors.Normalize(-2,2)
+            elif mdiff=='relative_perc':
+                norm2=mcolors.Normalize(vmin=-100, vmax=100)
+            else:
+                norm2 = mdiff
+        else:
+            norm=mcolors.LogNorm(vmin=vmin, vmax=vmax)
+            if mdiff=='relative':
+                norm2 = mcolors.Normalize(-2,2)
+            elif mdiff=='relative_perc':
+                norm2=mcolors.Normalize(vmin=-100, vmax=100)
+            else:
+                norm2 = mdiff
+    else:
+        norm=mcolors.Normalize(vmin=vmin, vmax=vmax)
+        if mdiff=='relative':
+            norm2=mcolors.Normalize(vmin=-100, vmax=100)
+        else:
+            norm2=mdiff
+    projection_a=crs.RotatedPole(pole_latitude=185, pole_longitude=20.0,
+                            central_rotated_longitude=0)
+    MapLL_TR_lat_a = np.array([  -44.884, -44.034])
+    MapLL_TR_lon_a = np.array([ -109.982, 62.260])
+   
+    projection_g=crs.RotatedPole(pole_latitude=-18, pole_longitude=-37.5,
+                            central_rotated_longitude=0)
+    MapLL_TR_lat_g = np.array([  56.119, 77.922])  
+    MapLL_TR_lon_g = np.array([ -55.15, 34.106])
+    xy_g = projection_g.transform_points(
+        crs.PlateCarree(),
+        lon_g,
+        lat_g)
+    x_g = xy_g[..., 0]
+    y_g = xy_g[..., 1]
+    xy_a = projection_a.transform_points(
+        crs.PlateCarree(),
+        lon_a,
+        lat_a)
+    x_a = xy_a[..., 0]
+    y_a = xy_a[..., 1]
+    fig = plt.figure(figsize=(15,10))
+    gs = gridspec.GridSpec(2, 3, hspace=0.0)
+    ax1 = fig.add_subplot(gs[0, 0], projection=projection_g,
+                     frameon=False)
+    ax2 = fig.add_subplot(gs[0, 1], projection=projection_g,
+                     frameon=False)
+    ax3 = fig.add_subplot(gs[0, 2], projection=projection_g,
+                     frameon=False)
+    ax4 = fig.add_subplot(gs[1, 0], projection=projection_a,
+                     frameon=False)
+    ax5 = fig.add_subplot(gs[1, 1], projection=projection_a,
+                     frameon=False)
+    ax6 = fig.add_subplot(gs[1, 2], projection=projection_a,
+                     frameon=False)
+    MapXextent_g, MapYextent_g, _ = projection_g.transform_points(crs.PlateCarree(), 
+                                                              MapLL_TR_lon_g, MapLL_TR_lat_g).T
+    MapXextent_a, MapYextent_a, _ = projection_a.transform_points(crs.PlateCarree(), 
+                                                              MapLL_TR_lon_a, MapLL_TR_lat_a).T
+    ax1.set_xlim([MapXextent_g[0], MapXextent_g[1]])
+    ax1.set_ylim([MapYextent_g[0], MapYextent_g[1]])
+    ax2.set_xlim([MapXextent_g[0], MapXextent_g[1]])
+    ax2.set_ylim([MapYextent_g[0], MapYextent_g[1]])
+    ax3.set_xlim([MapXextent_g[0], MapXextent_g[1]])
+    ax3.set_ylim([MapYextent_g[0], MapYextent_g[1]])
+    ax4.set_xlim([MapXextent_a[0], MapXextent_a[1]])
+    ax4.set_ylim([MapYextent_a[0], MapYextent_a[1]])
+    ax5.set_xlim([MapXextent_a[0], MapXextent_a[1]])
+    ax5.set_ylim([MapYextent_a[0], MapYextent_a[1]])
+    ax6.set_xlim([MapXextent_a[0], MapXextent_a[1]])
+    ax6.set_ylim([MapYextent_a[0], MapYextent_a[1]])
+    
+    plot = ax1.pcolormesh(x_g, y_g, data1_g, shading='auto',
+                  norm=norm, cmap=cmap, rasterized=True)
+    if masked:
+        ax1.add_feature(ccrs.NaturalEarthFeature('physical', 'ocean', '50m'), zorder=10, 
+                        facecolor='white', edgecolor='black')
+    else:
+        ax1.add_feature(ccrs.COASTLINE, zorder=10, 
+                        edgecolor='black')
+    plot = ax2.pcolormesh(x_g,y_g, data2_g, shading='auto',
+                  norm=norm, cmap=cmap, rasterized=True)
+    if masked:
+        ax2.add_feature(ccrs.NaturalEarthFeature('physical', 'ocean', '50m'), zorder=10, 
+                        facecolor='white', edgecolor='black')
+    else:
+        ax2.add_feature(ccrs.COASTLINE, zorder=10, 
+                        edgecolor='black')
+    if log == True:
+        if mdiff == 'relative':
+            diff_g = np.log10(data2_g/data1_g)
+        elif mdiff == 'relative_perc':
+            diff_g = (data2_g - data1_g)/data1_g*100
+        else:
+            diff_g = data2_g - data1_g
+    else:
+        if mdiff == 'relative':
+            diff_g = (data2_g - data1_g)/data1_g*100
+        else:
+            diff_g = data2_g - data1_g
+    diff_g[diff_g == 0] = np.nan
+    plot3 = ax3.pcolormesh(x_g, y_g, diff_g, shading='auto',
+                  norm=norm2, cmap=cmap2, rasterized=True)
+    if masked:
+        ax3.add_feature(ccrs.NaturalEarthFeature('physical', 'ocean', '50m'), zorder=10, 
+                        facecolor='white', edgecolor='black')
+    else:
+        ax3.add_feature(ccrs.COASTLINE, zorder=10, 
+                        edgecolor='black')
+
+    gl = ax1.gridlines(draw_labels=True, dms=True, 
+                        linewidth=2, color='gray', alpha=0.5, linestyle='--',
+                        zorder=11, x_inline=False,y_inline=False, 
+                        rotate_labels=0, xpadding=10)
+    gl.xlabel_style = {'size': 10}
+    gl.ylabel_style = {'size': 10}
+    gl.top_labels = False
+    gl.left_labels = False
+    ax1.set_title(title1)
+    gl = ax2.gridlines(draw_labels=True, dms=True, 
+                        linewidth=2, color='gray', alpha=0.5, linestyle='--',
+                        zorder=11, x_inline=False,y_inline=False, 
+                        rotate_labels=0, xpadding=10)
+    gl.xlabel_style = {'size': 10}
+    gl.ylabel_style = {'size': 10}
+    gl.top_labels = False
+    gl.left_labels = False
+    ax2.set_title(title2)
+    gl = ax3.gridlines(draw_labels=True, dms=True, 
+                        linewidth=2, color='gray', alpha=0.5, linestyle='--',
+                        zorder=11, x_inline=False,y_inline=False, 
+                        rotate_labels=0, xpadding=10)
+    gl.xlabel_style = {'size': 10}
+    gl.ylabel_style = {'size': 10}
+    gl.top_labels = False
+    gl.left_labels = False
+    if (title3 == None) and (title1 != None):
+        ax3.set_title(f'{title2} - \n {title1}')
+    elif title3 != None:
+        ax3.set_title(title3)
+    ax1.set_title('(a)', loc='left')
+    ax2.set_title('(b)', loc='left')
+    ax3.set_title('(c)', loc='left')
+    reader = shpreader.Reader("ne_50m_antarctic_ice_shelves_lines.shp")
+    geometries = []
+    for record in reader.records():
+        geometries.append(record.geometry)
+    shape_feature = ShapelyFeature(geometries, crs.PlateCarree(), facecolor='none', edgecolor='black', lw=1)
+    plot = ax4.pcolormesh(x_a, y_a, data1_a, shading='auto',
+                  norm=norm, cmap=cmap, rasterized=True)
+    if masked:
+        ax4.add_feature(ccrs.NaturalEarthFeature('physical', 'ocean', '50m'), zorder=10, 
+                        facecolor='white', edgecolor='black')
+    else:
+        ax4.add_feature(ccrs.COASTLINE, zorder=10, 
+                        edgecolor='black')
+    ax4.add_feature(shape_feature)
+    plot = ax5.pcolormesh(x_a,y_a, data2_a, shading='auto',
+                  norm=norm, cmap=cmap, rasterized=True)
+    if masked:
+        ax5.add_feature(ccrs.NaturalEarthFeature('physical', 'ocean', '50m'), zorder=10, 
+                        facecolor='white', edgecolor='black')
+    else:
+        ax5.add_feature(ccrs.COASTLINE, zorder=10, 
+                        edgecolor='black')
+    ax5.add_feature(shape_feature)
+    if log == True:
+        if mdiff == 'relative':
+            diff_a = np.log10(data2_a/data1_a)
+        elif mdiff == 'relative_perc':
+            diff_a = (data2_a - data1_a)/data1_a*100
+        else:
+            diff_a = data2_a - data1_a
+    else:
+        if mdiff == 'relative':
+            diff_a = (data2_a - data1_a)/data1_a*100
+        else:
+            diff_a = data2_a - data1_a
+    diff_a[diff_a == 0] = np.nan
+    plot3 = ax6.pcolormesh(x_a, y_a, diff_a, shading='auto',
+                  norm=norm2, cmap=cmap2, rasterized=True)
+    if masked:
+        ax6.add_feature(ccrs.NaturalEarthFeature('physical', 'ocean', '50m'), zorder=10, 
+                        facecolor='white', edgecolor='black')
+    else:
+        ax6.add_feature(ccrs.COASTLINE, zorder=10, 
+                        edgecolor='black')
+    ax6.add_feature(shape_feature)
+    gl = ax4.gridlines(draw_labels=True, dms=True, 
+                        linewidth=2, color='gray', alpha=0.5, linestyle='--',
+                        zorder=11, x_inline=False,y_inline=False, 
+                        rotate_labels=0, xpadding=10)
+    gl.xlabel_style = {'size': 10}
+    gl.ylabel_style = {'size': 10}
+    gl.top_labels = False
+    gl.left_labels = False
+    gl = ax5.gridlines(draw_labels=True, dms=True, 
+                        linewidth=2, color='gray', alpha=0.5, linestyle='--',
+                        zorder=11, x_inline=False,y_inline=False, 
+                        rotate_labels=0, xpadding=10)
+    gl.xlabel_style = {'size': 10}
+    gl.ylabel_style = {'size': 10}
+    gl.top_labels = False
+    gl.left_labels = False
+    gl = ax6.gridlines(draw_labels=True, dms=True, 
+                        linewidth=2, color='gray', alpha=0.5, linestyle='--',
+                        zorder=11, x_inline=False,y_inline=False, 
+                        rotate_labels=0, xpadding=10)
+    gl.xlabel_style = {'size': 10}
+    gl.ylabel_style = {'size': 10}
+    gl.top_labels = False
+    gl.left_labels = False
+    ax4.set_title(title1)
+    ax5.set_title(title2)
+    if (title3 == None) and (title1 != None):
+        ax6.set_title(f'{title2} - \n {title1}')
+    elif title3 != None:
+        ax6.set_title(title3)
+    ax4.set_title('(d)', loc='left')
+    ax5.set_title('(e)', loc='left')
+    ax6.set_title('(f)', loc='left')
+
+    cbar_ax = fig.add_axes([0.125, 0.0, 0.5, 0.015])
+    cb = fig.colorbar(plot, cax=cbar_ax, 
+                      label=f'{clabel} {unit}', extend=extend,
+                      orientation="horizontal")
+    cb.ax.minorticks_off()
+    cbar_ax2 = fig.add_axes([0.67, 0.0, 0.23, 0.015])
+    if log:
+        if mdiff == 'relative':
+            cb2 = fig.colorbar(plot3, cax=cbar_ax2,
+                        label=f'Log difference [-]', extend='both',
+                        orientation="horizontal")
+        elif mdiff == 'relative_perc':
+            cb2 = fig.colorbar(plot3, cax=cbar_ax2, 
+                        label=f'Difference [%]', extend='both',
+                        orientation="horizontal")
+        else:
+            cb2 = fig.colorbar(plot3, cax=cbar_ax2, 
+                            label=f'Difference', extend='both',
+                            orientation="horizontal")
+    else:
+        if mdiff == 'relative':
+            cb2 = fig.colorbar(plot3, cax=cbar_ax2, 
+                            label=f'Relative difference [%]', extend='both',
+                            orientation="horizontal")
+        else:
+            cb2 = fig.colorbar(plot3, cax=cbar_ax2, 
+                            label=f'Difference {unit}', extend='both',
+                            orientation="horizontal")
+        cb2.ax.locator_params(nbins=5)
+    cb2.ax.minorticks_off()
+    fig.subplots_adjust(bottom=0.01)
+    if savepath is not None:
+        plt.savefig(savepath, dpi=300, bbox_inches='tight', format='png')
+    return
