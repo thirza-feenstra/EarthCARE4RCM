@@ -49,8 +49,8 @@ def extract_first_date(filename):
 months = ['202409', '202410', '202411', '202412', '202501', '202502', '202503',
            '202504', '202505', '202506', '202507', '202508', '202509', '202510',
            '202511', '202512', '202601', '202602', '202603', '202604']
-domain = 'PXANT11'
-sim = 'bl_qb'
+domain = 'FGRN055'
+sim = 'bl'
 d_topo = xr.open_dataset(f'{domain}_masks.nc', engine='netcdf4')
 topo = d_topo.Topography.values
 infiles_ec_list = []
@@ -102,26 +102,18 @@ for month in months:
         infiles_ec_list.append(path_ec+infiles_ACM[idx])
         infiles_quality_list.append(path_q+infiles_q[idx])
 #%%
-for rac in infiles_racmo:
-    d_r = xr.open_dataset(rac)
-    racmo_lw = d_r.lwupa.values[0]
-    racmo_tmin = np.mean(d_r.temp.values, axis=0)
-    if np.any(racmo_lw < 65):
-        print(rac, racmo_lw[racmo_lw < 65], racmo_tmin[racmo_lw < 65])
-#%%
 bbr_lw = []
 rac_lw = []
 ec_cld = [] # 0 = cs, 1 = only ice, 2 = only liquid, 3 = mixed
 rac_cld = []
 ec_cld_h = [] # 0 = cs, 1 = only low, 2 = mid, 3 = high
 rac_cld_h = []
-wp_bias = []
 rlat = d_topo.rlat.values
 rlon = d_topo.rlon.values
 rlat_grid, rlon_grid = np.meshgrid(rlat, rlon, indexing='ij')
 latlon_pairs = np.column_stack((rlat_grid.ravel(), rlon_grid.ravel()))
 latlon_tree = cKDTree(latlon_pairs)
-is_only = True
+is_only = False
 if is_only:
     is_vals = d_topo.Icesheet_Only.values 
 for ec, q, rac in tqdm(zip(infiles_ec_list, infiles_quality_list, infiles_racmo),
@@ -240,7 +232,6 @@ for ec, q, rac in tqdm(zip(infiles_ec_list, infiles_quality_list, infiles_racmo)
         ec_cld_height[(ec_cloud_top > 0) & (ec_cloud_top <= 4000)] = 1
         ec_cld_height[(ec_cloud_top > 4000) & (ec_cloud_top <= 8000)] = 2
         ec_cld_height[(ec_cloud_top > 8000)] = 3
-
         rac_cld_height = np.zeros(len(rac_cloud_top))
         rac_cld_height[(rac_cloud_top > 0) & (rac_cloud_top <= 4000)] = 1
         rac_cld_height[(rac_cloud_top > 4000) & (rac_cloud_top <= 8000)] = 2
@@ -248,11 +239,9 @@ for ec, q, rac in tqdm(zip(infiles_ec_list, infiles_quality_list, infiles_racmo)
         if is_only:
             bbr_lw.append(bbr[(lw_status == 0) & (com_status == 0) & (icesheetmask == 1)])
             rac_lw.append(racmo_lw[(lw_status == 0) & (com_status == 0) & (icesheetmask == 1)])
-            wp_bias.append(wp_b[(lw_status == 0) & (com_status == 0)  & (icesheetmask == 1)])
         else:
             bbr_lw.append(bbr[(lw_status == 0) & (com_status == 0)])
             rac_lw.append(racmo_lw[(lw_status == 0) & (com_status == 0)])
-            wp_bias.append(wp_b[(lw_status == 0) & (com_status == 0)])
         ec_cld_h.append(ec_cld_height)
         rac_cld_h.append(rac_cld_height)
         ec_cld.append(ec_cld_st)
@@ -265,20 +254,6 @@ ec_cld_arr = np.array([xx for x in ec_cld for xx in x])
 rac_cld_arr = np.array([xx for x in rac_cld for xx in x])
 ec_cld_h_arr = np.array([xx for x in ec_cld_h for xx in x])
 rac_cld_h_arr = np.array([xx for x in rac_cld_h for xx in x])
-wp_bias_arr = np.array([xx for x in wp_bias for xx in x])
-phase = np.zeros(len(bbr_lw_arr))
-phase[(ec_cld_arr == 1) & (rac_cld_arr == 1)] = 1 # both ice
-phase[(ec_cld_arr == 2) & (rac_cld_arr == 2)] = 2 # both liq
-phase[(ec_cld_arr == 3) & (rac_cld_arr == 3)] = 3 # both mixed
-phase[(ec_cld_arr == 0) & (rac_cld_arr > 0)] = 4 # ec cs, rac cld
-phase[(ec_cld_arr > 0) & (rac_cld_arr == 0)] = 5 # ec cld, rac cs
-phase[(ec_cld_arr == 1) & (rac_cld_arr > 1)] = 6 # ec ice, rac liq/mix
-phase[(ec_cld_arr > 1) & (rac_cld_arr == 1)] = 7 # ec liq/mix, rac ice
-height = np.zeros(len(bbr_lw_arr))
-height[(ec_cld_h_arr == 3) & (rac_cld_h_arr == 1)] = 8 # ec high, rac low
-height[(ec_cld_h_arr == 3) & (rac_cld_h_arr == 2)] = 9 # ec high, rac mid
-height[(ec_cld_h_arr == 1) & (rac_cld_h_arr == 3)] = 10 # ec low, rac high
-height[(ec_cld_h_arr == 2) & (rac_cld_h_arr == 3)] = 11 # ec mid, rac high
 
 ds = xr.Dataset(
     data_vars={
@@ -288,17 +263,17 @@ ds = xr.Dataset(
         "rac_cld": (["points"], rac_cld_arr),
         "ec_cld_h": (["points"], ec_cld_h_arr),
         "rac_cld_h": (["points"], rac_cld_h_arr),
-        "wp_bias": (["points"], wp_bias_arr),
     },
     attrs={
         "description": "Longwave fluxes bbr and racmo, with cloud properties",
-        "lw_units": "W m-2",
-        "wp bias units": "kg m-3",
-        "cloud descr.": "0: both clear, 1: both ice, 2: both liq, 3: both mix, 4: ec clear, \
-        rac cloudy, 5: ec cloudy, rac clear, 6: ec ice, rac mix/liq, 7: ec ice, rac mix/liq, \
-        8: ec high, rac low, 9: ec high, rac mid, 10: ec low, rac high, 11: ec mid, rac high"
-    }
+        "lw_units": "W m-2"}
 )
+ds["bbr_lw"] = ds["bbr_lw"].assign_attrs(long_name = "TOA upwelling longwave flux from BBR")
+ds["rac_lw"] = ds["rac_lw"].assign_attrs(long_name = "TOA upwelling longwave flux from RACMO")
+ds["ec_cld"] = ds["ec_cld"].assign_attrs(long_name = "0: clear sky, 1: only ice, 2: only liquid, 3: mixed")
+ds["rac_cld"] = ds["rac_cld"].assign_attrs(long_name = "0: clear sky, 1: only ice, 2: only liquid, 3: mixed")
+ds["ec_cld_h"] = ds["ec_cld_h"].assign_attrs(long_name = "0: clear sky, 1: low, 2: mid, 3: high")
+ds["rac_cld_h"] = ds["rac_cld_h"].assign_attrs(long_name = "0: clear sky, 1: low, 2: mid, 3: high")
 if is_only:
     ds.to_netcdf(f"LW_{domain}_icesheet.nc") 
 else:
@@ -310,7 +285,6 @@ ec_cld = [] # 0 = cs, 1 = only ice, 2 = only liquid, 3 = mixed
 rac_cld = []
 ec_cld_h = [] # 0 = cs, 1 = only low, 2 = mid, 3 = high
 rac_cld_h = []
-wp_bias = []
 racmo_swdn_hr = xr.open_mfdataset([f'{domain}/RACMO2.4p1_v4_{sim}-2024/NC_1H/rsdt.KNMI-2024.{domain}.RACMO2.4p1_v4_{sim}.1H.nc',
                                    f'{domain}/RACMO2.4p1_v4_{sim}-2025/NC_1H/rsdt.KNMI-2025.{domain}.RACMO2.4p1_v4_{sim}.1H.nc',
                                    f'{domain}/RACMO2.4p1_v4_{sim}-2026/NC_1H/rsdt.KNMI-2026.{domain}.RACMO2.4p1_v4_{sim}.1H.nc'],
@@ -324,7 +298,7 @@ rlon = racmo_swdn_hr.rlon.values
 rlat_grid, rlon_grid = np.meshgrid(rlat, rlon, indexing='ij')
 latlon_pairs = np.column_stack((rlat_grid.ravel(), rlon_grid.ravel()))
 latlon_tree = cKDTree(latlon_pairs)
-is_only = True
+is_only = False
 if is_only:
     is_vals = d_topo.Icesheet_Only.values 
 for ec, q, rac in tqdm(zip(infiles_ec_list, infiles_quality_list, infiles_racmo),
@@ -463,11 +437,9 @@ for ec, q, rac in tqdm(zip(infiles_ec_list, infiles_quality_list, infiles_racmo)
         if is_only:
             bbr_sw.append(bbr[(sw_status == 0) & (com_status == 0) & (icesheetmask == 1)])
             rac_sw.append(racmo_sw[(sw_status == 0) & (com_status == 0) & (icesheetmask == 1)])
-            wp_bias.append(wp_b[(sw_status == 0) & (com_status == 0) & (icesheetmask == 1)])
         else:
             bbr_sw.append(bbr[(sw_status == 0) & (com_status == 0)])
             rac_sw.append(racmo_sw[(sw_status == 0) & (com_status == 0)])
-            wp_bias.append(wp_b[(sw_status == 0) & (com_status == 0)])
         ec_cld_h.append(ec_cld_height)
         rac_cld_h.append(rac_cld_height)
         ec_cld.append(ec_cld_st)
@@ -480,20 +452,6 @@ ec_cld_arr = np.array([xx for x in ec_cld for xx in x])
 rac_cld_arr = np.array([xx for x in rac_cld for xx in x])
 ec_cld_h_arr = np.array([xx for x in ec_cld_h for xx in x])
 rac_cld_h_arr = np.array([xx for x in rac_cld_h for xx in x])
-wp_bias_arr = np.array([xx for x in wp_bias for xx in x])
-phase = np.zeros(len(bbr_sw_arr))
-phase[(ec_cld_arr == 1) & (rac_cld_arr == 1)] = 1 # both ice
-phase[(ec_cld_arr == 2) & (rac_cld_arr == 2)] = 2 # both liq
-phase[(ec_cld_arr == 3) & (rac_cld_arr == 3)] = 3 # both mixed
-phase[(ec_cld_arr == 0) & (rac_cld_arr > 0)] = 4 # ec cs, rac cld
-phase[(ec_cld_arr > 0) & (rac_cld_arr == 0)] = 5 # ec cld, rac cs
-phase[(ec_cld_arr == 1) & (rac_cld_arr > 1)] = 6 # ec ice, rac liq/mix
-phase[(ec_cld_arr > 1) & (rac_cld_arr == 1)] = 7 # ec liq/mix, rac ice
-height = np.zeros(len(bbr_sw_arr))
-height[(ec_cld_h_arr == 3) & (rac_cld_h_arr == 1)] = 8 # ec high, rac low
-height[(ec_cld_h_arr == 3) & (rac_cld_h_arr == 2)] = 9 # ec high, rac mid
-height[(ec_cld_h_arr == 1) & (rac_cld_h_arr == 3)] = 10 # ec low, rac high
-height[(ec_cld_h_arr == 2) & (rac_cld_h_arr == 3)] = 11 # ec mid, rac high
 ds = xr.Dataset(
     data_vars={
         "bbr_sw": (["points"], bbr_sw_arr),
@@ -502,17 +460,17 @@ ds = xr.Dataset(
         "rac_cld": (["points"], rac_cld_arr),
         "ec_cld_h": (["points"], ec_cld_h_arr),
         "rac_cld_h": (["points"], rac_cld_h_arr),
-        "wp_bias": (["points"], wp_bias_arr),
     },
     attrs={
         "description": "Shortwave fluxes bbr and racmo, with cloud properties",
-        "sw_units": "W m-2",
-        "wp bias units": "kg m-3",
-        "cloud descr.": "0: both clear, 1: both ice, 2: both liq, 3: both mix, 4: ec clear, \
-        rac cloudy, 5: ec cloudy, rac clear, 6: ec ice, rac mix/liq, 7: ec ice, rac mix/liq, \
-        8: ec high, rac low, 9: ec high, rac mid, 10: ec low, rac high, 11: ec mid, rac high"
-    }
+        "sw_units": "W m-2"}
 )
+ds["bbr_sw"] = ds["bbr_sw"].assign_attrs(long_name = "TOA upwelling shortwave flux from BBR")
+ds["rac_sw"] = ds["rac_sw"].assign_attrs(long_name = "TOA upwelling shortwave flux from RACMO")
+ds["ec_cld"] = ds["ec_cld"].assign_attrs(long_name = "0: clear sky, 1: only ice, 2: only liquid, 3: mixed")
+ds["rac_cld"] = ds["rac_cld"].assign_attrs(long_name = "0: clear sky, 1: only ice, 2: only liquid, 3: mixed")
+ds["ec_cld_h"] = ds["ec_cld_h"].assign_attrs(long_name = "0: clear sky, 1: low, 2: mid, 3: high")
+ds["rac_cld_h"] = ds["rac_cld_h"].assign_attrs(long_name = "0: clear sky, 1: low, 2: mid, 3: high")
 if is_only:
     ds.to_netcdf(f"SW_{domain}_icesheet.nc")
 else:
